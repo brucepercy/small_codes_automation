@@ -1,0 +1,20 @@
+=IF(G960=F960, 
+    IF(J960=I960, 
+        "None", 
+        E960 & ": " & ABS(J960-I960) & " internet" & IF(ABS(J960-I960)=1, " is", "s are") & " missing from the order tracker"
+    ), 
+    IF(G960 < F960, 
+        E960 & ": " & ABS(G960-F960) & " mob" & IF(ABS(G960-F960)=1, " is", "s are") & " missing from the order tracker", 
+        IF(G960 > F960, 
+            E960 & ": " & ABS(G960-F960) & " mob" & IF(ABS(G960-F960)=1, " is", "s are") & " over-reported in the order tracker", 
+            ""
+        )
+    ) & 
+    IF(J960 < I960, 
+        " and " & ABS(J960-I960) & " internet" & IF(ABS(J960-I960)=1, " is", "s are") & " missing from the order tracker", 
+        IF(J960 > I960, 
+            " and " & ABS(J960-I960) & " internet" & IF(ABS(J960-I960)=1, " is", "s are") & " over-reported in the order tracker", 
+            ""
+        )
+    )
+)
