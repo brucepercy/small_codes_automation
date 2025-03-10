@@ -1,0 +1,38 @@
+function matchPostalCodesAndCopy() {
+  const sourceSheetName = "TELUS - Submitted Orders (Compliance)"; // Source sheet name
+  const targetSheetName = "SIN INVESTIGATION- Postal code Matcher"; // Destination sheet name
+  const sourceStartRow = 22490; // Start checking rows in the source sheet from here
+  const targetStartRow = 25; // Start writing matched rows to the target sheet from this row
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = ss.getSheetByName(sourceSheetName);
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  
+  if (!sourceSheet || !targetSheet) {
+    throw new Error("One of the sheets does not exist.");
+  }
+
+  // Get postal codes from the target sheet (Column Q, index 17)
+  const targetPostalCodes = targetSheet.getRange(2, 17, targetSheet.getLastRow() - 1).getValues().flat();
+  
+  // Get data from the source sheet (starting from Row 22490)
+  const sourceData = sourceSheet.getRange(sourceStartRow, 1, sourceSheet.getLastRow() - sourceStartRow + 1, sourceSheet.getLastColumn()).getValues();
+  
+  // Get postal codes from Column N in the source sheet
+  const sourcePostalCodes = sourceData.map(row => row[13]); // Column N is the 14th column (index 13)
+
+  // Find matches and copy rows to the target sheet
+  let result = [];
+  targetPostalCodes.forEach(targetCode => {
+    sourceData.forEach((row, index) => {
+      if (sourcePostalCodes[index] === targetCode) {
+        result.push(row);
+      }
+    });
+  });
+
+  // Write matched rows to the target sheet starting from Row 25
+  if (result.length > 0) {
+    targetSheet.getRange(targetStartRow, 1, result.length, result[0].length).setValues(result);
+  }
+}
