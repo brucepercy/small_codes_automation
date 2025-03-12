@@ -1,0 +1,15 @@
+function onEdit(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Form Responses 1'); // Original Sheet Name
+  var targetSheet = SpreadsheetApp.openById('1ba0BN6bAt8JvyTDWKxKDzL0lKDTPTmefCPS9sPR8RT0').getSheetByName('Sheet1'); // New Sheet Name
+  var columnNumber = 30; // Column AD (30th column)
+
+  // Check if the edit happened in Column AD and is not blank
+  if (e.range.getColumn() == columnNumber && e.value != null && e.value != '') {
+    var lastRow = targetSheet.getLastRow() + 1;
+    var sourceRow = e.range.getRow();
+    var sourceData = sheet.getRange(sourceRow, 1, 1, sheet.getLastColumn()).getValues();
+    
+    // Copy the entire row to the new sheet
+    targetSheet.getRange(lastRow, 1, 1, sheet.getLastColumn()).setValues(sourceData);
+  }
+}
