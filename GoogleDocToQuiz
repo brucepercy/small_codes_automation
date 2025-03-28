@@ -1,0 +1,92 @@
+function createTrueFalseQuizWithAnswers() {
+  var doc = DocumentApp.getActiveDocument();
+  var body = doc.getBody();
+  var paragraphs = body.getParagraphs();
+  
+  // Correct answers array (from your JSON)
+  var correctAnswers = [
+    false,  // Q1
+    true,   // Q2
+    true,   // Q3
+    false,  // Q4
+    false,  // Q5
+    false,  // Q6
+    true,   // Q7
+    true,   // Q8
+    false,  // Q9
+    false,  // Q10
+    true,   // Q11
+    true,   // Q12
+    true,   // Q13
+    false,  // Q14
+    false,  // Q15
+    false,  // Q16
+    true,   // Q17
+    false,  // Q18
+    true,   // Q19
+    true,   // Q20
+    true,   // Q21
+    true,   // Q22
+    false,  // Q23
+    true,   // Q24
+    true,   // Q25
+    true,   // Q26
+    true,   // Q27
+    true,   // Q28
+    true    // Q29
+  ];
+
+  // Create quiz
+  var form = FormApp.create("Daily Quiz - With Answers");
+  form.setTitle("Daily Quiz - With Answers");
+  form.setIsQuiz(true); // Make it a scored quiz
+
+  var questionCount = 0;
+  var currentSection = null;
+  
+  for (var i = 0; i < paragraphs.length; i++) {
+    var text = paragraphs[i].getText().trim();
+    var paragraphType = paragraphs[i].getHeading();
+    
+    // Check if this is a section heading (assuming headings are used for sections)
+    if (paragraphType !== DocumentApp.ParagraphHeading.NORMAL) {
+      currentSection = text;
+      continue;
+    }
+    
+    // Only process if it's a question (you might need to adjust this condition)
+    if (text.length > 0 && text.match(/^(Q\d+:|Question \d+:|[\d]+\.)/i)) {
+      // Make sure we don't exceed our answer array
+      if (questionCount >= correctAnswers.length) {
+        Logger.log("Warning: More questions than answers available");
+        break;
+      }
+      
+      // Add section title if this is the first question in a new section
+      if (currentSection) {
+        form.addSectionHeaderItem().setTitle(currentSection);
+        currentSection = null; // Reset so we don't add it again
+      }
+      
+      var item = form.addMultipleChoiceItem();
+      item.setTitle(text)
+          .setPoints(1) // 1 point per question
+          .setChoices([
+            item.createChoice("True", correctAnswers[questionCount]), // True is correct if answer is true
+            item.createChoice("False", !correctAnswers[questionCount]) // False is correct if answer is false
+          ])
+          .showOtherOption(false);
+      
+      questionCount++;
+    }
+  }
+
+  Logger.log("Form Created: " + form.getEditUrl());
+  DocumentApp.getUi().alert(
+    "Quiz Created!", 
+    "Your True/False quiz with correct answers has been created:\n" + form.getEditUrl(), 
+    DocumentApp.getUi().ButtonSet.OK
+  );
+  
+  return form;
+}
