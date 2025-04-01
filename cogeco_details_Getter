@@ -1,0 +1,40 @@
+function fetchDetailsByEmail() {
+  // Open the sheets
+  var masterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("COGECO"); // Master Data Sheet
+  var lookupSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("EmailToNameFetch - Bruce"); // Lookup Sheet
+
+  // Get master data
+  var masterData = masterSheet.getDataRange().getValues(); // Get all data from Master Sheet
+
+  // Get lookup emails
+  var lookupData = lookupSheet.getRange(2, 1, lookupSheet.getLastRow() - 1, 1).getValues(); // Column A (emails)
+
+  // Iterate through the Lookup Sheet emails
+  for (var j = 0; j < lookupData.length; j++) {
+    var lookupEmail = lookupData[j][0]; // Email from Lookup Sheet (Column A)
+    if (!lookupEmail) continue; // Skip if the email is empty
+
+    var found = false; // Flag to track if a match is found
+
+    // Search for matches in the Master Data
+    for (var i = 1; i < masterData.length; i++) {
+      var row = masterData[i]; // Current row in Master Data
+      var email = row[3]; // Column D in Master Sheet (Email Address)
+
+      if (email && email.toLowerCase() === lookupEmail.toLowerCase()) {
+        // Match found! Populate Lookup Sheet
+        lookupSheet.getRange(j + 2, 2).setValue(row[1]); // First Name (Column B)
+        lookupSheet.getRange(j + 2, 3).setValue(row[2]); // Last Name (Column C)
+        lookupSheet.getRange(j + 2, 4).setValue(row[4]); // Phone Number (Column E)
+        lookupSheet.getRange(j + 2, 5).setValue(row[5]); // City/Job (Column F)
+        found = true;
+        break;
+      }
+    }
+
+    // If no match is found, mark as "Not Found"
+    if (!found) {
+      lookupSheet.getRange(j + 2, 2, 1, 4).setValue("Not Found");
+    }
+  }
+}
