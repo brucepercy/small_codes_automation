@@ -1,0 +1,8 @@
+function checkIfExists() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const columnA = sheet.getRange("A:A").getValues().flat();
+  const valueToCheck = Utilities.formatString("%s", sheet.getRange("B6").getValue());
+
+  const exists = columnA.includes(valueToCheck) ? "Yes" : "No";
+  sheet.getRange("C6").setValue(exists); // You can change C6 to your desired output cell
+}
