@@ -1,0 +1,115 @@
+// function matchAndCopyAccountDetails() {
+//   const sourceSheetName = "TELUS - Submitted Orders (COPY)"; // Sheet with all order details
+//   const targetSheetName = "Cancelled Lines"; // Sheet where matched rows will be pasted
+//   const targetStartRow = 250; // Row to start pasting matched rows
+//   const accountNumberColumn = 9; // Column I in "Cancelled Lines" (Index 9, 1-based)
+//   const sourceAccountColumn = 45; // Column AS in "TELUS - Submitted Orders (COPY)" (Index 45, 1-based)
+
+//   const ss = SpreadsheetApp.getActiveSpreadsheet();
+//   const sourceSheet = ss.getSheetByName(sourceSheetName);
+//   const targetSheet = ss.getSheetByName(targetSheetName);
+
+//   if (!sourceSheet || !targetSheet) {
+//     throw new Error("One of the sheets does not exist.");
+//   }
+
+//   // Get all Account Numbers from "Cancelled Lines" (Column I)
+//   const sourceAccountNumbers = targetSheet.getRange(2, accountNumberColumn, targetSheet.getLastRow() - 1)
+//                                           .getValues()
+//                                           .flat()
+//                                           .filter(String); // Remove empty values
+
+//   // Get all data from "TELUS - Submitted Orders (COPY)"
+//   const targetData = sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, sourceSheet.getLastColumn()).getValues();
+
+//   let result = [];
+
+//   // Convert account numbers to a Set for faster lookups
+//   const accountSet = new Set(sourceAccountNumbers);
+
+//   // Loop through each row in "TELUS - Submitted Orders (COPY)"
+//   targetData.forEach(row => {
+//     if (accountSet.has(row[sourceAccountColumn - 1])) { // Match Account Number
+//       result.push(row);
+//     }
+//   });
+
+//   // Check if any matched rows exist
+//   if (result.length > 0) {
+//     // Determine the number of rows & columns
+//     const numRows = result.length;
+//     const numCols = result[0].length;
+
+//     // Write matched rows to "Cancelled Lines" starting at row 650
+//     targetSheet.getRange(targetStartRow, 1, numRows, numCols).setValues(result);
+//   } else {
+//     Logger.log("No matching account numbers found.");
+//   }
+// }
+
+
+
+
+
+function matchAndCopyAccountDetails() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Source sheet definitions with correct column indices
+  const sourceSheets = [
+    { name: "5/27/24-3/26/25", accountColumn: 45 }, // AS
+    { name: "3/27/2025-Present", accountColumn: 48 } // AV
+  ];
+
+  const targetSheetName = "Cancelled Lines";
+  const targetStartRow = 250;
+  const targetAccountColumn = 9; // Column I in "Cancelled Lines"
+
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  if (!targetSheet) {
+    throw new Error("Target sheet 'Cancelled Lines' does not exist.");
+  }
+
+  // Get account numbers from column I, starting from row 2
+  const accountNumbers = targetSheet.getRange(2, targetAccountColumn, targetSheet.getLastRow() - 1)
+                                    .getValues()
+                                    .flat()
+                                    .filter(String); // Remove empty values
+
+  // Use a Set for faster lookups
+  const accountSet = new Set(accountNumbers);
+  let allResults = [];
+
+  for (const source of sourceSheets) {
+    const sourceSheet = ss.getSheetByName(source.name);
+    if (!sourceSheet) {
+      Logger.log(`Source sheet '${source.name}' not found. Skipping.`);
+      continue;
+    }
+
+    const sourceData = sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, sourceSheet.getLastColumn()).getValues();
+    
+    // Match rows where the account number in the specified column is in our list
+    const matchedRows = sourceData.filter(row => accountSet.has(row[source.accountColumn - 1]));
+    allResults = allResults.concat(matchedRows);
+  }
+
+  // Write all matched rows to Cancelled Lines starting at row 250
+// Write all matched rows to Cancelled Lines starting at row 250
+if (allResults.length > 0) {
+  // Get the maximum number of columns across all matched rows
+  const maxCols = Math.max(...allResults.map(row => row.length));
+
+  // Pad each row to match maxCols
+  const paddedResults = allResults.map(row => {
+    const missing = maxCols - row.length;
+    return row.concat(Array(missing).fill("")); // pad with empty strings
+  });
+
+  // Write to target sheet
+  targetSheet.getRange(targetStartRow, 1, paddedResults.length, maxCols).setValues(paddedResults);
+
+  Logger.log(`✅ Copied ${paddedResults.length} rows to '${targetSheetName}' with ${maxCols} columns.`);
+} else {
+  Logger.log("❌ No matching account numbers found in either source sheet.");
+  }
+}
