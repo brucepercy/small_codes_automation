@@ -1,0 +1,65 @@
+function matchPostalCodesAndCopy() {
+  const sourceSheetName = "5/27/24-3/26/25"; 
+  const targetSheetName = "SIN INVESTIGATION- Postal code Matcher"; 
+
+  const sourceStartRow = 1; 
+  const targetStartRow = 100; 
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = ss.getSheetByName(sourceSheetName);
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  
+  if (!sourceSheet || !targetSheet) {
+    throw new Error("One of the sheets does not exist.");
+  }
+
+  // Get target postal codes (Column Q)
+  const targetPostalCodes = targetSheet.getRange(2, 17, targetSheet.getLastRow() - 1, 1).getValues().flat().filter(String);
+
+  // Get source data and headers
+  const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+  const sourceData = sourceSheet.getRange(sourceStartRow, 1, sourceSheet.getLastRow() - sourceStartRow + 1, sourceSheet.getLastColumn()).getValues();
+
+  // Extract postal codes from source (Column T, index 19)
+  const sourcePostalCodes = sourceData.map(row => row[8]);
+
+  // Function to pad row to uniform length
+  const padRow = (row, expectedLength) => {
+    while (row.length < expectedLength) {
+      row.push("");
+    }
+    return row.slice(0, expectedLength);
+  };
+
+  // Find matches
+  let matchedRows = [];
+  targetPostalCodes.forEach(targetCode => {
+    sourceData.forEach((row, index) => {
+      if (sourcePostalCodes[index] === targetCode) {
+        matchedRows.push(padRow([...row], sourceHeaders.length));
+      }
+    });
+  });
+
+  // Clear previous results
+  const lastTargetRow = targetSheet.getLastRow();
+  if (lastTargetRow >= targetStartRow) {
+    targetSheet.getRange(targetStartRow, 1, lastTargetRow - targetStartRow + 1, targetSheet.getLastColumn()).clearContent();
+  }
+
+  // Write matched rows
+  if (matchedRows.length > 0) {
+    const maxColumns = Math.max(
+      ...matchedRows.map(row => row.length),
+      targetSheet.getLastColumn()
+    );
+
+    const uniformData = matchedRows.map(row => padRow(row, maxColumns));
+    targetSheet.getRange(targetStartRow, 1, uniformData.length, maxColumns).setValues(uniformData);
+
+    // Optional: Add headers if writing from row 1
+    if (targetStartRow === 1) {
+      targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
+    }
+  }
+}
