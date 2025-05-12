@@ -1,0 +1,223 @@
+function matchPostalCodesAndCopy() {
+  const sourceSheetName = "5/27/24-3/26/25"; 
+  const targetSheetName = "SIN INVESTIGATION- Postal code Matcher"; 
+
+  const sourceStartRow = 1; 
+  const targetStartRow = 10; 
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = ss.getSheetByName(sourceSheetName);
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  
+  if (!sourceSheet || !targetSheet) {
+    throw new Error("One of the sheets does not exist.");
+  }
+
+  // Get target postal codes (Column Q)
+  const targetPostalCodes = targetSheet.getRange(2, 17, targetSheet.getLastRow() - 1, 1).getValues().flat().filter(String);
+
+  // Get source data and headers
+  const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+  const sourceData = sourceSheet.getRange(sourceStartRow, 1, sourceSheet.getLastRow() - sourceStartRow + 1, sourceSheet.getLastColumn()).getValues();
+
+  // Extract postal codes from source (Column N, index 13)
+  const sourcePostalCodes = sourceData.map(row => row[13]); // Changed from 8 to 13 for column N
+
+  // Function to pad row to uniform length
+  const padRow = (row, expectedLength) => {
+    while (row.length < expectedLength) {
+      row.push("");
+    }
+    return row.slice(0, expectedLength);
+  };
+
+  // Find matches
+  let matchedRows = [];
+  targetPostalCodes.forEach(targetCode => {
+    sourceData.forEach((row, index) => {
+      if (sourcePostalCodes[index] === targetCode) {
+        matchedRows.push(padRow([...row], sourceHeaders.length));
+      }
+    });
+  });
+
+  // Clear previous results
+  const lastTargetRow = targetSheet.getLastRow();
+  if (lastTargetRow >= targetStartRow) {
+    targetSheet.getRange(targetStartRow, 1, lastTargetRow - targetStartRow + 1, targetSheet.getLastColumn()).clearContent();
+  }
+
+  // Write matched rows
+  if (matchedRows.length > 0) {
+    const maxColumns = Math.max(
+      ...matchedRows.map(row => row.length),
+      targetSheet.getLastColumn()
+    );
+
+    const uniformData = matchedRows.map(row => padRow(row, maxColumns));
+    targetSheet.getRange(targetStartRow, 1, uniformData.length, maxColumns).setValues(uniformData);
+
+    // Optional: Add headers if writing from row 1
+    if (targetStartRow === 1) {
+      targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
+    }
+  }
+}
+
+// function matchPostalCodesAndCopy() {
+//   const sourceSheetName = "3/27/2025-Present"; 
+//   const targetSheetName = "SIN INVESTIGATION- Postal code Matcher"; 
+
+//   const sourceStartRow = 1; 
+//   const targetStartRow = 100; 
+
+//   const ss = SpreadsheetApp.getActiveSpreadsheet();
+//   const sourceSheet = ss.getSheetByName(sourceSheetName);
+//   const targetSheet = ss.getSheetByName(targetSheetName);
+  
+//   if (!sourceSheet || !targetSheet) {
+//     throw new Error("One of the sheets does not exist.");
+//   }
+
+//   // Get target postal codes (Column Q)
+//   const targetPostalCodes = targetSheet.getRange(2, 17, targetSheet.getLastRow() - 1, 1).getValues().flat().filter(String);
+
+//   // Get source data and headers
+//   const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+//   const sourceData = sourceSheet.getRange(sourceStartRow, 1, sourceSheet.getLastRow() - sourceStartRow + 1, sourceSheet.getLastColumn()).getValues();
+
+//   // Extract postal codes from source (Column T, index 19)
+//   const sourcePostalCodes = sourceData.map(row => row[19]);
+
+//   // Function to pad row to uniform length
+//   const padRow = (row, expectedLength) => {
+//     while (row.length < expectedLength) {
+//       row.push("");
+//     }
+//     return row.slice(0, expectedLength);
+//   };
+
+//   // Find matches
+//   let matchedRows = [];
+//   targetPostalCodes.forEach(targetCode => {
+//     sourceData.forEach((row, index) => {
+//       if (sourcePostalCodes[index] === targetCode) {
+//         matchedRows.push(padRow([...row], sourceHeaders.length));
+//       }
+//     });
+//   });
+
+//   // Clear previous results
+//   const lastTargetRow = targetSheet.getLastRow();
+//   if (lastTargetRow >= targetStartRow) {
+//     targetSheet.getRange(targetStartRow, 1, lastTargetRow - targetStartRow + 1, targetSheet.getLastColumn()).clearContent();
+//   }
+
+//   // Write matched rows
+//   if (matchedRows.length > 0) {
+//     const maxColumns = Math.max(
+//       ...matchedRows.map(row => row.length),
+//       targetSheet.getLastColumn()
+//     );
+
+//     const uniformData = matchedRows.map(row => padRow(row, maxColumns));
+//     targetSheet.getRange(targetStartRow, 1, uniformData.length, maxColumns).setValues(uniformData);
+
+//     // Optional: Add headers if writing from row 1
+//     if (targetStartRow === 1) {
+//       targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
+//     }
+//   }
+// }
+
+
+
+
+// function matchPostalCodesAndCopy() {
+//   const sourceSheet1Name = "5/27/24-3/26/25"; 
+//   const sourceSheet2Name = "3/27/2025-Present"; 
+//   const targetSheetName = "SIN INVESTIGATION- Postal code Matcher"; 
+
+//   const source1StartRow = 31279; 
+//   const source2StartRow = 1; 
+//   const targetStartRow = 100; 
+
+//   const ss = SpreadsheetApp.getActiveSpreadsheet();
+//   const sourceSheet1 = ss.getSheetByName(sourceSheet1Name);
+//   const sourceSheet2 = ss.getSheetByName(sourceSheet2Name);
+//   const targetSheet = ss.getSheetByName(targetSheetName);
+  
+//   if (!sourceSheet1 || !sourceSheet2 || !targetSheet) {
+//     throw new Error("One of the sheets does not exist.");
+//   }
+
+//   // Get target postal codes (Column Q)
+//   const targetPostalCodes = targetSheet.getRange(2, 17, targetSheet.getLastRow() - 1, 1).getValues().flat().filter(String);
+
+//   // Get data from source sheets with headers to determine column count
+//   const source1Headers = sourceSheet1.getRange(1, 1, 1, sourceSheet1.getLastColumn()).getValues()[0];
+//   const source2Headers = sourceSheet2.getRange(1, 1, 1, sourceSheet2.getLastColumn()).getValues()[0];
+  
+//   // Get all data from source sheets
+//   const source1Data = sourceSheet1.getRange(source1StartRow, 1, sourceSheet1.getLastRow() - source1StartRow + 1, sourceSheet1.getLastColumn()).getValues();
+//   const source2Data = sourceSheet2.getRange(source2StartRow, 1, sourceSheet2.getLastRow() - source2StartRow + 1, sourceSheet2.getLastColumn()).getValues();
+
+//   // Extract postal codes
+//   const source1PostalCodes = source1Data.map(row => row[13]); // Column N
+//   const source2PostalCodes = source2Data.map(row => row[19]); // Column T
+
+//   // Store matched rows with source indicator
+//   let matchedRows = [];
+
+//   // Function to pad row with empty values if needed
+//   const padRow = (row, expectedLength) => {
+//     while (row.length < expectedLength) {
+//       row.push("");
+//     }
+//     return row.slice(0, expectedLength);
+//   };
+
+//   // Find matches
+//   targetPostalCodes.forEach(targetCode => {
+//     // Search in first source sheet
+//     source1Data.forEach((row, index) => {
+//       if (source1PostalCodes[index] === targetCode) {
+//         matchedRows.push(padRow([...row], source1Headers.length));
+//       }
+//     });
+
+//     // Search in second source sheet
+//     source2Data.forEach((row, index) => {
+//       if (source2PostalCodes[index] === targetCode) {
+//         matchedRows.push(padRow([...row], source2Headers.length));
+//       }
+//     });
+//   });
+
+//   // Clear previous results
+//   const lastTargetRow = targetSheet.getLastRow();
+//   if (lastTargetRow >= targetStartRow) {
+//     targetSheet.getRange(targetStartRow, 1, lastTargetRow - targetStartRow + 1, targetSheet.getLastColumn()).clearContent();
+//   }
+
+//   // Write results if any matches found
+//   if (matchedRows.length > 0) {
+//     // Determine maximum columns needed
+//     const maxColumns = Math.max(
+//       ...matchedRows.map(row => row.length),
+//       targetSheet.getLastColumn()
+//     );
+
+//     // Ensure all rows have the same number of columns
+//     const uniformData = matchedRows.map(row => padRow(row, maxColumns));
+
+//     // Write to target sheet
+//     targetSheet.getRange(targetStartRow, 1, uniformData.length, maxColumns).setValues(uniformData);
+    
+//     // Optional: Add headers if needed
+//     if (targetStartRow === 1) {
+//       const headers = source1Headers.length >= source2Headers.length ? source1Headers : source2Headers;
+//       targetSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+//     }
+//   }
+// }
