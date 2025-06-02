@@ -1,0 +1,53 @@
+function sendNextDraftInLabel() {
+  const labelName = "Bruce Flagging Pending";
+  const label = GmailApp.getUserLabelByName(labelName);
+  const props = PropertiesService.getScriptProperties();
+
+  let draftIdsStr = props.getProperty("remainingDraftIds");
+
+  // First time setup: get all draft IDs in the label
+  if (!draftIdsStr) {
+    const threads = label.getThreads();
+    const draftIds = [];
+
+    for (const thread of threads) {
+      const messages = thread.getMessages();
+      for (const msg of messages) {
+        if (msg.isDraft()) {
+          draftIds.push(msg.getId());
+        }
+      }
+    }
+
+    // Save list of IDs
+    props.setProperty("remainingDraftIds", draftIds.join(","));
+    draftIdsStr = props.getProperty("remainingDraftIds");
+  }
+
+  // Send next draft
+  const draftIds = draftIdsStr.split(",");
+  if (draftIds.length === 0 || !draftIds[0]) {
+    Logger.log("All drafts sent.");
+    props.deleteProperty("remainingDraftIds");
+    return;
+  }
+
+  const nextId = draftIds.shift(); // remove first one
+  const allDrafts = GmailApp.getDrafts();
+
+  for (const draft of allDrafts) {
+    if (draft.getMessage().getId() === nextId) {
+      draft.send();
+      Logger.log("Sent draft: " + draft.getMessage().getSubject());
+      break;
+    }
+  }
+
+  // Save updated list
+  if (draftIds.length > 0) {
+    props.setProperty("remainingDraftIds", draftIds.join(","));
+  } else {
+    props.deleteProperty("remainingDraftIds");
+    Logger.log("Finished sending all drafts.");
+  }
+}
