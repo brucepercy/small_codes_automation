@@ -1,0 +1,52 @@
+function generateDisciplinaryEmails() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = sheet.getDataRange().getValues();
+
+  const startRow = 2; // Skip header
+  const subjectCol = 7; // Column G
+  const bodyCol = 8;    // Column H
+
+  const numRows = data.length - 1;
+
+  // Clear previous data in G and H (Subject & Body)
+  sheet.getRange(startRow, subjectCol, numRows, 2).clearContent();
+
+  for (let i = startRow - 1; i < data.length; i++) {
+    const [name, flag, tier, reason, totalFlags, chargeback] = data[i];
+    if (!name || !tier) continue;
+
+    const subjectLine = `${tier} Disciplinary Action`;
+
+    // Build the email body exactly like your original, but in HTML with <br> and bold where needed,
+    // and stop right at "Best regards,"
+
+    let emailBody = `Hello ${name},<br><br>`;
+    emailBody += `You are facing ${tier === "Tier 3" ? "the most severe level of " : tier === "Tier 2" ? "a severe level of " : ""}disciplinary action for the following conduct:<br><br>`;
+    emailBody += `<b>Flag:</b> ${flag}<br>`;
+    const formattedReason = reason.toString().replace(/\n/g, '<br>');
+    emailBody += `<b>Reason:</b><br>${formattedReason}<br><br>`;
+
+    if (tier === 'Tier 1') {
+      emailBody += `A $${chargeback} commission penalty will be applied as per policy. This penalty serves to ensure accountability and compliance with established processes. If another violation occurs, it will lead to a higher commission chargeback as per policy, in addition to both suspension and a permanent record from HR.<br><br>`;
+    } else if (tier === 'Tier 2') {
+      emailBody += `As a result, the following actions will be taken by the Compliance Team and Management:<br>`;
+      emailBody += `- A permanent note will be added to your HR record.<br>`;
+      emailBody += `- A $${chargeback} commission penalty will be applied as per policy.<br><br>`;
+      emailBody += `If another infraction occurs, it will lead to extended suspension, with subsequent violations potentially resulting in removal.<br><br>`;
+    } else if (tier === 'Tier 3') {
+      emailBody += `As a result, the following actions will be taken by the Compliance Team and Management:<br>`;
+      emailBody += `- A permanent note will be added to your HR record.<br>`;
+      emailBody += `- You have a total of ${totalFlags} flag(s). A $${chargeback} commission penalty will be applied as per policy.<br>`;
+      emailBody += `- Final Warning: Any future infraction will result in immediate removal from the program.<br><br>`;
+      emailBody += `We maintain the highest standards for our Partners and Staff, and such matters will not be tolerated.<br><br>`;
+    }
+
+    emailBody += `The Events Management Team will provide coaching to ensure alignment and understanding of the situation's severity. For questions or follow-up, contact your manager or the Compliance Team.<br>`;
+    emailBody += `<br>Kindly acknowledge once you have received this email.<br><br>`;
+    emailBody += `Best regards,`;
+
+    // Write to sheet
+    sheet.getRange(i + 1, subjectCol).setValue(subjectLine);
+    sheet.getRange(i + 1, bodyCol).setValue(emailBody);
+  }
+}
