@@ -1,0 +1,28 @@
+function createEmailDrafts() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Flag Email Templates"); // Ensure the name matches
+  // Get data from Columns G, H, I, J, K (subject, body, recipient, status, cc)
+  const data = sheet.getRange(2, 7, sheet.getLastRow() - 1, 5).getValues(); 
+
+  let draftsCreated = 0;
+  let skippedDueToMissingRep = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const subject = data[i][0];     // Column G
+    const body = data[i][1];        // Column H
+    const email = data[i][2];       // Column I (To)
+    const repStatus = data[i][3];   // Column J
+    const cc = data[i][4];          // Column K (comma-separated CC)
+
+    try {
+      GmailApp.createDraft(email, subject, '', {
+        htmlBody: body,
+        cc: cc || '' // If no CC is present, use empty string
+      });
+      draftsCreated++;
+    } catch (e) {
+      Logger.log(`Error creating draft for row ${i + 2}: ${e.message}`);
+    }
+  }
+
+  Logger.log(`${draftsCreated} drafts created successfully.`);
+}
