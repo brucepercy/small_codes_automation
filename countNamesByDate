@@ -1,0 +1,84 @@
+function countNamesByDate() {
+  // Get the sheets
+  var sourceSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("June 2025 - Onwards");
+  var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+  
+  // Get the date from A2 of target sheet
+  var inputDate = targetSheet.getRange("A2").getValue();
+  
+  // Check if inputDate is a valid Date object
+  if (!(inputDate instanceof Date) || isNaN(inputDate)) {
+    SpreadsheetApp.getUi().alert("Please enter a valid date in cell A2");
+    return;
+  }
+  
+  // Extract just the date parts (without time)
+  var targetYear = inputDate.getFullYear();
+  var targetMonth = inputDate.getMonth();
+  var targetDay = inputDate.getDate();
+  
+  // Get all data from source sheet
+  var dataRange = sourceSheet.getDataRange();
+  var data = dataRange.getValues();
+  
+  // Assuming manager names are in a specific column (change column index as needed)
+  // For example, if manager names are in column B, use index 1 (0-based)
+  var managerColumnIndex = 1; // Change this to the correct column index
+  
+  // Create an object to count manager occurrences for the specific date
+  var managerCounts = {};
+  
+  // Process each row
+  for (var i = 1; i < data.length; i++) { // Start from 1 to skip header
+    var rowDate = data[i][0]; // Date is in column A (index 0)
+    
+    // Check if rowDate is a valid date
+    if (rowDate instanceof Date && !isNaN(rowDate)) {
+      // Compare dates (ignoring time)
+      if (rowDate.getFullYear() === targetYear &&
+          rowDate.getMonth() === targetMonth &&
+          rowDate.getDate() === targetDay) {
+        
+        var managerName = data[i][managerColumnIndex];
+        
+        // Check if manager name exists
+        if (managerName) {
+          managerName = managerName.toString().trim();
+          if (managerName) { // Check if not empty after trimming
+            managerCounts[managerName] = (managerCounts[managerName] || 0) + 1;
+          }
+        }
+      }
+    }
+  }
+  
+  // Get sorted unique manager names
+  var uniqueManagers = Object.keys(managerCounts).sort();
+  
+  // Clear previous results from row 2 onwards (B2:F)
+  if (targetSheet.getLastRow() > 2) {
+    targetSheet.getRange("B2:F" + targetSheet.getLastRow()).clearContent();
+  } else if (targetSheet.getLastRow() === 2) {
+    targetSheet.getRange("B2:F2").clearContent();
+  }
+  
+  // Write results starting from row 2
+  uniqueManagers.forEach(function(manager, i) {
+    var count = managerCounts[manager];
+    targetSheet.getRange(i + 2, 2).setValue(manager);               // Column B (Manager Name)
+    targetSheet.getRange(i + 2, 3).setValue(count + "/" + count);   // Column C (Count in X/X format)
+    targetSheet.getRange(i + 2, 6).setValue(count);                 // Column F (Regular count)
+  });
+  
+  // Show completion message
+  SpreadsheetApp.getUi().alert("Completed! Found " + uniqueManagers.length + " unique managers for " + 
+                              (targetMonth + 1) + "/" + targetDay + "/" + targetYear);
+}
+
+// Add menu option for easy access
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Name Tools")
+    .addItem("Count Names by Date", "countNamesByDate")
+    .addToUi();
+}
