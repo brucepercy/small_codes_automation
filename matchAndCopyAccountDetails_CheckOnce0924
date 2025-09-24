@@ -1,0 +1,82 @@
+function matchAndCopyAccountDetails_CheckOnce() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Source sheets and their account number column indices
+  const sourceSheets = [
+    { name: "5/27/24-3/26/25", accountColumn: 45 }, // Column AS
+    { name: "3/27/2025-Present", accountColumn: 48 } // Column AV
+  ];
+
+  const targetSheetName = "Cancelled Lines";
+  const targetStartRow = 1000;
+  const targetAccountColumn = 1; // Column A (1-indexed)
+
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  if (!targetSheet) {
+    throw new Error("Target sheet 'Cancelled Lines' does not exist.");
+  }
+
+  // Get account numbers from Column A, starting from row 2
+  const accountNumbers = targetSheet
+    .getRange(2, targetAccountColumn, targetSheet.getLastRow() - 1, 1)
+    .getValues()
+    .flat();
+
+  // Create a map to track how many times we've processed each account number
+  const accountCountMap = new Map();
+  
+  // Prepare results array with empty arrays for each account number
+  const results = accountNumbers.map(() => []);
+
+  // Process each source sheet
+  for (const source of sourceSheets) {
+    const sourceSheet = ss.getSheetByName(source.name);
+    if (!sourceSheet) {
+      Logger.log(`Source sheet '${source.name}' not found. Skipping.`);
+      continue;
+    }
+
+    const sourceData = sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, sourceSheet.getLastColumn()).getValues();
+
+    // Process each account number in the target sheet
+    for (let i = 0; i < accountNumbers.length; i++) {
+      const accountNumber = accountNumbers[i];
+      if (!accountNumber) continue; // Skip blank account numbers
+
+      // Get how many times we've already processed this account number
+      const count = accountCountMap.get(accountNumber) || 0;
+      
+      // Find all matching rows in source data
+      const matchingRows = sourceData.filter(row => row[source.accountColumn - 1] === accountNumber);
+      
+      // If we have a matching row at the current count index, use it
+      if (count < matchingRows.length) {
+        results[i] = matchingRows[count];
+        accountCountMap.set(accountNumber, count + 1);
+      }
+    }
+  }
+
+  // Find the maximum number of columns in any result row
+  const maxCols = results.reduce((max, row) => Math.max(max, row.length || 0), 0);
+
+  // Pad all rows with empty strings to ensure consistent width
+  const paddedResults = results.map(row => {
+    if (row.length === 0) {
+      return Array(maxCols).fill("");
+    }
+    const missing = maxCols - row.length;
+    return row.concat(Array(missing).fill(""));
+  });
+
+  // Write results to the target sheet
+  if (paddedResults.length > 0) {
+    targetSheet.getRange(targetStartRow, 1, paddedResults.length, maxCols).setValues(paddedResults);
+    
+    // Count how many accounts were matched
+    const matchedCount = paddedResults.filter(row => row.some(cell => cell !== "")).length;
+    Logger.log(`✅ Processed ${accountNumbers.length} account numbers. Found matches for ${matchedCount} accounts.`);
+  } else {
+    Logger.log("❌ No account numbers to process in target sheet.");
+  }
+}
