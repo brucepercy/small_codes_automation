@@ -1,0 +1,91 @@
+function countDailyData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Get the sheets
+  var sourceSheet = ss.getSheetByName('3/27/2025-Present');
+  var dailyCountSheet = ss.getSheetByName('Daily Count');
+  
+  // Get the date from B1 in Daily Count sheet
+  var targetDate = dailyCountSheet.getRange('B1').getValue();
+  
+  // Format the date to match the source sheet format
+  var formattedDate = Utilities.formatDate(targetDate, Session.getScriptTimeZone(), 'M/d/yyyy');
+  
+  // Get all data from source sheet
+  var sourceData = sourceSheet.getDataRange().getValues();
+  
+  // Define the column indexes (0-based)
+  var dateCol = 0; // Column A
+  var columnsToCount = {
+    'East SHS MRR': 24, // Column Y
+    'East Mobility MRR': 25, // Column Z
+    'East TOS MRR': 26, // Column AA
+    'East LWC MRR': 27, // Column AB
+    'Altima TV (put 1 if a sale)': 28, // Column AC
+    'Altima Internet (put 1 if a sale)': 29, // Column AD
+    'Koodo Internet (put 1 if a sale)': 30, // Column AE
+    'Koodo TV (put 1 if a sale)': 31, // Column AF
+    'West SHS MRR': 32, // Column AG
+    'West Mob MRR': 33, // Column AH
+    'West HSIA MRR': 34, // Column AI
+    'West Optik TV MRR': 35, // Column AJ
+    'West Stream Plus': 36, // Column AK
+    'West HP MRR': 37, // Column AL
+    'West TOS': 38, // Column AM
+    'West LWC MRR': 39, // Column AN
+    'Smart Energy MRR': 40, // Column AO
+    'Pure Fiber Internet MRR': 41  // Column AP
+  };
+  
+  // Initialize counters
+  var counts = {};
+  Object.keys(columnsToCount).forEach(function(key) {
+    counts[key] = 0;
+  });
+  
+  // Loop through all rows in source data
+  for (var i = 1; i < sourceData.length; i++) { // Start from 1 to skip header
+    var row = sourceData[i];
+    var rowDate = row[dateCol];
+    
+    // Check if the row date matches our target date
+    if (rowDate instanceof Date) {
+      var rowFormattedDate = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'M/d/yyyy');
+      
+      if (rowFormattedDate === formattedDate) {
+        // Count non-empty cells in each target column
+        Object.keys(columnsToCount).forEach(function(key) {
+          var colIndex = columnsToCount[key];
+          var cellValue = row[colIndex];
+          
+          // Check if cell has data (not empty, not null, not undefined)
+          if (cellValue !== '' && cellValue !== null && cellValue !== undefined) {
+            counts[key]++;
+          }
+        });
+      }
+    }
+  }
+  
+  // Write results to Daily Count sheet
+  var resultRow = 3; // Start from row 3 (assuming titles are in A3, A4, etc.)
+  
+  Object.keys(columnsToCount).forEach(function(key) {
+    var countCell = dailyCountSheet.getRange('B' + resultRow);
+    countCell.setValue(counts[key]);
+    resultRow++;
+  });
+  
+  // Add timestamp
+  dailyCountSheet.getRange('B' + (resultRow + 1)).setValue('Last updated: ' + new Date());
+  
+  SpreadsheetApp.getUi().alert('Daily count completed for ' + formattedDate);
+}
+
+// Function to create a custom menu
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Daily Count')
+    .addItem('Run Daily Count', 'countDailyData')
+    .addToUi();
+}
