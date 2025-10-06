@@ -1,0 +1,473 @@
+function countDailyData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Get the sheets
+  var sourceSheet = ss.getSheetByName('3/27/2025-Present');
+  var dailyCountSheet = ss.getSheetByName('Daily Count');
+  
+  // Get the selection type from B1
+  var selectionType = dailyCountSheet.getRange('B1').getValue();
+  
+  // Validate selection type
+  if (selectionType !== 'Date' && selectionType !== 'Date Range') {
+    SpreadsheetApp.getUi().alert('Bruce has a message for you: Please select either "Date" or "Date Range" in cell B1.');
+    return;
+  }
+  
+  var startDate, endDate;
+  
+  if (selectionType === 'Date') {
+    // Single date mode - get date from C1
+    startDate = dailyCountSheet.getRange('C1').getValue();
+    endDate = startDate;
+    
+    // Validate date
+    if (!startDate || !(startDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Bruce has a message for you: Please select a valid date in cell C1.');
+      return;
+    }
+  } else {
+    // Date Range mode - get dates from E1 and F1
+    startDate = dailyCountSheet.getRange('E1').getValue();
+    endDate = dailyCountSheet.getRange('F1').getValue();
+    
+    // Validate dates
+    if (!startDate || !(startDate instanceof Date) || !endDate || !(endDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Bruce has a message for you: Please select valid start and end dates in cells E1 and F1.');
+      return;
+    }
+    
+    // Validate that end date is not before start date
+    if (endDate < startDate) {
+      SpreadsheetApp.getUi().alert('Bruce has a message for you: End date cannot be before start date.');
+      return;
+    }
+  }
+  
+  // Get the program filter from C4 in Daily Count sheet
+  var programFilter = dailyCountSheet.getRange('C4').getValue();
+  
+  // Get the manager filter from C6 in Daily Count sheet
+  var managerFilter = dailyCountSheet.getRange('C6').getValue();
+  
+  // Validate that only one filter is selected
+  var programSelected = (programFilter !== 'Entire Program' && programFilter !== '' && programFilter !== 'All Events Only');
+  var managerSelected = (managerFilter !== 'Entire Program' && managerFilter !== '');
+  
+  // Check if both filters are selected
+  if (programSelected && managerSelected) {
+    SpreadsheetApp.getUi().alert('Bruce has a message for you: Please select only ONE filter - either Program OR Manager, not both.\n\nPlease set one of them to "Entire Program" and run again.');
+    return;
+  }
+  
+  // Check if manager is selected but program is not "Entire Program"
+  if (managerSelected && programFilter !== 'Entire Program' && programFilter !== 'All Events Only') {
+    SpreadsheetApp.getUi().alert('Bruce has a message for you, Program must be set to "Entire Program" or "All Events Only".\n\nPlease set Program to "Entire Program" or "All Events Only" and run again.');
+    return;
+  }
+  
+  // Format the dates to match the source sheet format
+  var timeZone = Session.getScriptTimeZone();
+  var formattedStartDate = Utilities.formatDate(startDate, timeZone, 'M/d/yyyy');
+  var formattedEndDate = Utilities.formatDate(endDate, timeZone, 'M/d/yyyy');
+  
+  // Get all data from source sheet
+  var sourceData = sourceSheet.getDataRange().getValues();
+  
+  // Define the column indexes (0-based) - ORIGINAL ORDER from your data
+  var dateCol = 0; // Column A
+  var programCol = 3; // Column D (program data)
+  var managerCol = 6; // Column G (manager data)
+  var columnsToCount = {
+    'East SHS MRR': 24, // Column Y
+    'East Mobility MRR': 25, // Column Z
+    'East TOS MRR': 26, // Column AA
+    'East LWC MRR': 27, // Column AB
+    'Altima TV (put 1 if a sale)': 28, // Column AC
+    'Altima Internet (put 1 if a sale)': 29, // Column AD
+    'Koodo Internet (put 1 if a sale)': 30, // Column AE
+    'Koodo TV (put 1 if a sale)': 31, // Column AF
+    'West SHS MRR': 32, // Column AG
+    'West Mob MRR': 33, // Column AH
+    'West HSIA MRR': 34, // Column AI
+    'West Optik TV MRR': 35, // Column AJ
+    'West Stream Plus': 36, // Column AK
+    'West HP MRR': 37, // Column AL
+    'West TOS': 38, // Column AM
+    'West LWC MRR': 39, // Column AN
+    'Smart Energy MRR': 40, // Column AO
+    'Pure Fiber Internet MRR': 41  // Column AP
+  };
+  
+  // Define the output mapping - which row in Daily Count gets which data
+  var outputMapping = [
+    {row: 11, key: 'East Mobility MRR'},     // C11
+    {row: 12, key: 'West Mob MRR'},          // C12
+    // C13 - empty (skipped)
+    // C14 - empty (skipped)
+    {row: 15, key: 'Koodo Internet (put 1 if a sale)'}, // C15
+    {row: 16, key: 'Koodo TV (put 1 if a sale)'},       // C16
+    // C17 - empty (skipped)
+    // C18 - empty (skipped)
+    {row: 19, key: 'Pure Fiber Internet MRR'}, // C19
+    {row: 20, key: 'West HSIA MRR'},         // C20
+    {row: 21, key: 'West Optik TV MRR'},     // C21
+    {row: 22, key: 'West Stream Plus'},      // C22
+    // C23 - empty (skipped)
+    // C24 - empty (skipped)
+    {row: 25, key: 'East SHS MRR'},          // C25
+    {row: 26, key: 'West SHS MRR'},          // C26
+    // C27 - empty (skipped)
+    // C28 - empty (skipped)
+    {row: 29, key: 'East TOS MRR'},          // C29
+    {row: 30, key: 'East LWC MRR'},          // C30
+    {row: 31, key: 'West HP MRR'},           // C31
+    {row: 32, key: 'West TOS'},              // C32
+    {row: 33, key: 'West LWC MRR'}           // C33
+  ];
+  
+  // Initialize counters
+  var counts = {};
+  Object.keys(columnsToCount).forEach(function(key) {
+    counts[key] = 0;
+  });
+  
+  // Loop through all rows in source data
+  for (var i = 1; i < sourceData.length; i++) { // Start from 1 to skip header
+    var row = sourceData[i];
+    var rowDate = row[dateCol];
+    var rowProgram = row[programCol];
+    var rowManager = row[managerCol];
+    
+    // Check if the row date is a valid date
+    if (rowDate instanceof Date) {
+      var rowFormattedDate = Utilities.formatDate(rowDate, timeZone, 'M/d/yyyy');
+      
+      // Check date match based on selection type
+      var dateMatches = false;
+      if (selectionType === 'Date') {
+        // Single date match
+        dateMatches = (rowFormattedDate === formattedStartDate);
+      } else {
+        // Date range match - check if row date is between start and end dates (inclusive)
+        var rowTime = rowDate.getTime();
+        var startTime = startDate.getTime();
+        var endTime = endDate.getTime();
+        
+        // Set end time to end of day for inclusive range
+        var endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        var endTimeInclusive = endOfDay.getTime();
+        
+        dateMatches = (rowTime >= startTime && rowTime <= endTimeInclusive);
+      }
+      
+      // Check program/manager filters based on what's selected
+      var filterMatches = true;
+      
+      if (programFilter === 'All Events Only') {
+        // Filter for TELUS Events Ontario and TELUS Events Quebec
+        filterMatches = (rowProgram === 'TELUS Events Ontario' || rowProgram === 'TELUS Events Quebec');
+      } else if (programSelected) {
+        // Filter by specific program
+        filterMatches = (rowProgram === programFilter);
+      } else if (managerSelected) {
+        // Filter by manager
+        filterMatches = (rowManager === managerFilter);
+      }
+      // If neither is selected (both are "Entire Program"), no additional filtering needed
+      
+      if (dateMatches && filterMatches) {
+        // Count non-empty cells in each target column
+        Object.keys(columnsToCount).forEach(function(key) {
+          var colIndex = columnsToCount[key];
+          var cellValue = row[colIndex];
+          
+          // Check if cell has data (not empty, not null, not undefined)
+          if (cellValue !== '' && cellValue !== null && cellValue !== undefined) {
+            counts[key]++;
+          }
+        });
+      }
+    }
+  }
+  
+  // Write results to Daily Count sheet in the specific rows (COLUMN C)
+  outputMapping.forEach(function(mapping) {
+    var countCell = dailyCountSheet.getRange('C' + mapping.row);
+    countCell.setValue(counts[mapping.key]);
+  });
+  
+  // Calculate and write total counts for each category
+  // Mobility (C11 + C12)
+  var mobilityTotal = counts['East Mobility MRR'] + counts['West Mob MRR'];
+  dailyCountSheet.getRange('E11').setValue(mobilityTotal);
+  
+  // Kood internet (C15 + C16)
+  var koodInternetTotal = counts['Koodo Internet (put 1 if a sale)'] + counts['Koodo TV (put 1 if a sale)'];
+  dailyCountSheet.getRange('E15').setValue(koodInternetTotal);
+  
+  // Telus Internet (C19 + C20 + C21 + C22)
+  var telusInternetTotal = counts['Pure Fiber Internet MRR'] + counts['West HSIA MRR'] + counts['West Optik TV MRR'] + counts['West Stream Plus'];
+  dailyCountSheet.getRange('E19').setValue(telusInternetTotal);
+  
+  // Home Security (C25 + C26)
+  var homeSecurityTotal = counts['East SHS MRR'] + counts['West SHS MRR'];
+  dailyCountSheet.getRange('E25').setValue(homeSecurityTotal);
+  
+  // Other Products (C29 + C30 + C31 + C32 + C33)
+  var otherProductsTotal = counts['East TOS MRR'] + counts['East LWC MRR'] + counts['West HP MRR'] + counts['West TOS'] + counts['West LWC MRR'];
+  dailyCountSheet.getRange('E29').setValue(otherProductsTotal);
+  
+  // Add timestamp and filter info
+  var filterInfo = '';
+  if (programFilter === 'All Events Only') {
+    filterInfo = 'All Events Only (TELUS Events Ontario & Quebec)';
+  } else if (programSelected) {
+    filterInfo = 'Program: ' + programFilter;
+  } else if (managerSelected) {
+    filterInfo = 'Manager: ' + managerFilter;
+  } else {
+    filterInfo = 'All Programs & Managers';
+  }
+  
+  // Add date range info to the timestamp
+  var dateInfo = '';
+  if (selectionType === 'Date') {
+    dateInfo = formattedStartDate;
+  } else {
+    dateInfo = formattedStartDate + ' to ' + formattedEndDate;
+  }
+  
+  dailyCountSheet.getRange('C35').setValue('Last updated: ' + new Date() + ' | ' + filterInfo + ' | Date: ' + dateInfo);
+  
+  // ==================================================================
+  // MANAGER-WISE COUNTS STARTING FROM ROW 40
+  // ==================================================================
+  
+  // Get unique managers for the date range
+  var uniqueManagers = [];
+  var managerDataMap = {}; // To store counts for each manager
+  
+  // First pass: identify unique managers for the date range
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var rowDate = row[dateCol];
+    var rowManager = row[managerCol];
+    
+    if (rowDate instanceof Date && rowManager && rowManager !== '') {
+      var rowFormattedDate = Utilities.formatDate(rowDate, timeZone, 'M/d/yyyy');
+      
+      // Check date range
+      var dateInRange = false;
+      if (selectionType === 'Date') {
+        dateInRange = (rowFormattedDate === formattedStartDate);
+      } else {
+        var rowTime = rowDate.getTime();
+        var startTime = startDate.getTime();
+        var endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        var endTimeInclusive = endOfDay.getTime();
+        
+        dateInRange = (rowTime >= startTime && rowTime <= endTimeInclusive);
+      }
+      
+      // Check program filter for manager selection
+      var programMatches = true;
+      if (programFilter === 'All Events Only') {
+        var rowProgram = row[programCol];
+        programMatches = (rowProgram === 'TELUS Events Ontario' || rowProgram === 'TELUS Events Quebec');
+      } else if (programSelected) {
+        var rowProgram = row[programCol];
+        programMatches = (rowProgram === programFilter);
+      }
+      
+      if (dateInRange && programMatches) {
+        if (uniqueManagers.indexOf(rowManager) === -1) {
+          uniqueManagers.push(rowManager);
+          managerDataMap[rowManager] = {};
+          
+          // Initialize all counters for this manager
+          Object.keys(columnsToCount).forEach(function(key) {
+            managerDataMap[rowManager][key] = 0;
+          });
+        }
+      }
+    }
+  }
+  
+  // Second pass: count data for each manager
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var rowDate = row[dateCol];
+    var rowManager = row[managerCol];
+    
+    if (rowDate instanceof Date && rowManager && rowManager !== '') {
+      var rowFormattedDate = Utilities.formatDate(rowDate, timeZone, 'M/d/yyyy');
+      
+      // Check date range
+      var dateInRange = false;
+      if (selectionType === 'Date') {
+        dateInRange = (rowFormattedDate === formattedStartDate);
+      } else {
+        var rowTime = rowDate.getTime();
+        var startTime = startDate.getTime();
+        var endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        var endTimeInclusive = endOfDay.getTime();
+        
+        dateInRange = (rowTime >= startTime && rowTime <= endTimeInclusive);
+      }
+      
+      // Check program filter for manager selection
+      var programMatches = true;
+      if (programFilter === 'All Events Only') {
+        var rowProgram = row[programCol];
+        programMatches = (rowProgram === 'TELUS Events Ontario' || rowProgram === 'TELUS Events Quebec');
+      } else if (programSelected) {
+        var rowProgram = row[programCol];
+        programMatches = (rowProgram === programFilter);
+      }
+      
+      if (dateInRange && programMatches && uniqueManagers.indexOf(rowManager) !== -1) {
+        // Count non-empty cells for this manager
+        Object.keys(columnsToCount).forEach(function(key) {
+          var colIndex = columnsToCount[key];
+          var cellValue = row[colIndex];
+          
+          if (cellValue !== '' && cellValue !== null && cellValue !== undefined) {
+            managerDataMap[rowManager][key]++;
+          }
+        });
+      }
+    }
+  }
+  
+  // Define manager output structure starting from row 40
+  var managerStartRow = 40;
+  var currentRow = managerStartRow;
+  
+  // Clear previous manager data (from row 40 onwards)
+  var lastRow = dailyCountSheet.getLastRow();
+  if (lastRow >= managerStartRow) {
+    dailyCountSheet.getRange(managerStartRow, 1, lastRow - managerStartRow + 1, 10).clearContent();
+  }
+  
+  // Write manager-wise counts
+  uniqueManagers.forEach(function(manager) {
+    // Write manager header in BOLD
+    dailyCountSheet.getRange('A' + currentRow).setValue('Manager:');
+    dailyCountSheet.getRange('B' + currentRow).setValue(manager);
+    
+    // Apply bold formatting to manager title and name
+    dailyCountSheet.getRange('A' + currentRow + ':B' + currentRow).setFontWeight('bold');
+    currentRow++;
+    
+    // Write category headers (normal text, not bold)
+    dailyCountSheet.getRange('A' + currentRow).setValue('Category');
+    dailyCountSheet.getRange('B' + currentRow).setValue('Products');
+    dailyCountSheet.getRange('C' + currentRow).setValue('Count');
+    currentRow++;
+    
+    // Mobility Category
+    dailyCountSheet.getRange('A' + currentRow).setValue('Mobility');
+    dailyCountSheet.getRange('B' + currentRow).setValue('East Mobility');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['East Mobility MRR']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('West Mob');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['West Mob MRR']);
+    currentRow++;
+    
+    // Add empty row between categories
+    currentRow++;
+    
+    // Kood Internet Category
+    dailyCountSheet.getRange('A' + currentRow).setValue('Kood internet');
+    dailyCountSheet.getRange('B' + currentRow).setValue('Koodo Internet');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['Koodo Internet (put 1 if a sale)']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('Koodo TV');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['Koodo TV (put 1 if a sale)']);
+    currentRow++;
+    
+    // Add empty row between categories
+    currentRow++;
+    
+    // Telus Internet Category
+    dailyCountSheet.getRange('A' + currentRow).setValue('Telus Internet');
+    dailyCountSheet.getRange('B' + currentRow).setValue('Pure Fiber Internet');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['Pure Fiber Internet MRR']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('West HSIA MRR');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['West HSIA MRR']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('West Optik TV MRR');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['West Optik TV MRR']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('West Stream Plus');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['West Stream Plus']);
+    currentRow++;
+    
+    // Add empty row between categories
+    currentRow++;
+    
+    // Home Security Category
+    dailyCountSheet.getRange('A' + currentRow).setValue('Home Security');
+    dailyCountSheet.getRange('B' + currentRow).setValue('East SHS MRR');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['East SHS MRR']);
+    currentRow++;
+    
+    dailyCountSheet.getRange('B' + currentRow).setValue('West SHS MRR');
+    dailyCountSheet.getRange('C' + currentRow).setValue(managerDataMap[manager]['West SHS MRR']);
+    currentRow++;
+    
+    // Add two empty rows between managers
+    currentRow += 2;
+  });
+  
+  // Add summary for manager section
+  if (uniqueManagers.length > 0) {
+    dailyCountSheet.getRange('A' + currentRow).setValue('Manager breakdown completed for ' + uniqueManagers.length + ' manager(s)');
+    
+    var managerDateInfo = '';
+    if (selectionType === 'Date') {
+      managerDateInfo = 'Date: ' + formattedStartDate;
+    } else {
+      managerDateInfo = 'Date Range: ' + formattedStartDate + ' to ' + formattedEndDate;
+    }
+    dailyCountSheet.getRange('A' + (currentRow + 1)).setValue(managerDateInfo);
+  }
+  
+  // Update the final alert to include selection type and manager info
+  var dateDisplay = selectionType === 'Date' ? formattedStartDate : formattedStartDate + ' to ' + formattedEndDate;
+  var managerInfo = uniqueManagers.length > 0 ? '\nFound ' + uniqueManagers.length + ' manager(s) for this date range' : '\nNo manager data found for this date range';
+  
+  SpreadsheetApp.getUi().alert('Daily count completed for ' + dateDisplay + '\n' + filterInfo + managerInfo);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
