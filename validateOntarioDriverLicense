@@ -1,0 +1,274 @@
+
+
+
+
+// // MAIN FUNCTION - Run this to create the form and setup everything
+// function createIDValidatorForm() {
+//   // Create a new Google Form
+//   const form = FormApp.create('ID Validator');
+//   form.setDescription('Please provide your driver license information for validation. All fields are required.')
+//     .setConfirmationMessage('Thank you for submitting your information for validation.')
+//     .setAllowResponseEdits(false)
+//     .setAcceptingResponses(true);
+  
+//   // Add First Name question (Required)
+//   const firstNameItem = form.addTextItem();
+//   firstNameItem.setTitle('First Name')
+//     .setRequired(true);
+  
+//   // Add Last Name question (Required)
+//   const lastNameItem = form.addTextItem();
+//   lastNameItem.setTitle('Last Name')
+//     .setRequired(true);
+  
+//   // Add Date of Birth question (Required) - 8 characters YYYYMMDD
+//   const dobItem = form.addTextItem();
+//   dobItem.setTitle('Date of Birth')
+//     .setHelpText('Please use 8-digit format: YYYYMMDD (e.g., 19900515 for May 15, 1990)')
+//     .setRequired(true);
+  
+//   // Add input validation for Date of Birth - exactly 8 digits using regex
+//   const dobValidation = FormApp.createTextValidation()
+//     .setHelpText('Must be exactly 8 digits (YYYYMMDD)')
+//     .requireTextMatchesPattern('^\\d{8}$')
+//     .build();
+//   dobItem.setValidation(dobValidation);
+  
+//   // Add Province of Driver License Issue (Required)
+//   const provinceItem = form.addMultipleChoiceItem();
+//   provinceItem.setTitle('Province of Driver License Issue')
+//     .setChoiceValues([
+//       'Alberta',
+//       'British Columbia',
+//       'Manitoba',
+//       'New Brunswick',
+//       'Newfoundland and Labrador',
+//       'Nova Scotia',
+//       'Nunavut',
+//       'Ontario',
+//       'Prince Edward Island',
+//       'Quebec',
+//       'Saskatchewan',
+//       'Yukon'
+//     ])
+//     .setRequired(true);
+  
+//   // Add Driver License Number question (Required)
+//   const licenseNumberItem = form.addTextItem();
+//   licenseNumberItem.setTitle('Driver License Number')
+//     .setRequired(true);
+  
+//   // Add Expiry Date question (Required) - 8 characters YYYYMMDD
+//   const expiryDateItem = form.addTextItem();
+//   expiryDateItem.setTitle('Expiry Date')
+//     .setHelpText('Please use 8-digit format: YYYYMMDD (e.g., 20251231 for December 31, 2025)')
+//     .setRequired(true);
+  
+//   // Add input validation for Expiry Date - exactly 8 digits using regex
+//   const expiryValidation = FormApp.createTextValidation()
+//     .setHelpText('Must be exactly 8 digits (YYYYMMDD)')
+//     .requireTextMatchesPattern('^\\d{8}$')
+//     .build();
+//   expiryDateItem.setValidation(expiryValidation);
+  
+//   // Create a new spreadsheet for responses
+//   const spreadsheet = SpreadsheetApp.create('ID Validator Responses');
+//   form.setDestination(FormApp.DestinationType.SPREADSHEET, spreadsheet.getId());
+  
+//   // Setup headers in the spreadsheet
+//   const sheet = spreadsheet.getSheets()[0];
+//   sheet.getRange('A1:H1').setValues([[
+//     'Timestamp', 
+//     'First Name', 
+//     'Last Name', 
+//     'Date of Birth', 
+//     'Province of Driver License Issue', 
+//     'Driver License Number', 
+//     'Expiry Date', 
+//     'Validity'
+//   ]]);
+  
+//   // Set up the trigger for automatic validation
+//   ScriptApp.newTrigger('validateDriverLicense')
+//     .forSpreadsheet(spreadsheet)
+//     .onFormSubmit()
+//     .create();
+  
+//   // Get the URLs
+//   const formUrl = form.getPublishedUrl();
+//   const editUrl = form.getEditUrl();
+//   const spreadsheetUrl = spreadsheet.getUrl();
+  
+//   // Display success message
+//   const ui = SpreadsheetApp.getUi();
+//   ui.alert(
+//     'ID Validator Form Created Successfully!',
+//     'Your "ID Validator" form has been created with automatic validation.\n\n' +
+//     'Form URL: ' + formUrl + '\n' +
+//     'Responses Spreadsheet: ' + spreadsheetUrl + '\n\n' +
+//     'Automatic validation is setup for Ontario driver licenses.',
+//     ui.ButtonSet.OK
+//   );
+  
+//   return {
+//     formUrl: formUrl,
+//     spreadsheetUrl: spreadsheetUrl
+//   };
+// }
+
+// // AUTOMATIC VALIDATION FUNCTION - Runs when form is submitted
+// function validateDriverLicense(e) {
+//   try {
+//     const sheet = e.source.getActiveSheet();
+//     const row = e.range.getRow();
+    
+//     // Get the data from the current row
+//     const timestamp = sheet.getRange(row, 1).getValue();
+//     const firstName = sheet.getRange(row, 2).getValue();
+//     const lastName = sheet.getRange(row, 3).getValue();
+//     const dateOfBirth = sheet.getRange(row, 4).getValue();
+//     const province = sheet.getRange(row, 5).getValue();
+//     const licenseNumber = sheet.getRange(row, 6).getValue().toString();
+//     const expiryDate = sheet.getRange(row, 7).getValue();
+    
+//     let validity = 'Invalid ID';
+    
+//     // Currently only validating Ontario licenses
+//     if (province === 'Ontario') {
+//       validity = validateOntarioDriverLicense(dateOfBirth, lastName, licenseNumber);
+//     }
+    
+//     // Write validation result to column H
+//     sheet.getRange(row, 8).setValue(validity);
+    
+//   } catch (error) {
+//     console.error('Error validating driver license:', error);
+//   }
+// }
+
+// // ONTARIO DRIVER LICENSE VALIDATION - WITH BUG FIX
+// function validateOntarioDriverLicense(dob, lastName, licenseNumber) {
+//   try {
+//     // Convert all inputs to strings to handle both numbers and strings
+//     const dobStr = dob.toString();
+//     const lastNameStr = lastName.toString();
+//     const licenseStr = licenseNumber.toString();
+    
+//     console.log('Validating:', { 
+//       dob: dobStr, 
+//       lastName: lastNameStr, 
+//       licenseNumber: licenseStr 
+//     });
+    
+//     // Check if license number has exactly 15 characters (1 letter + 14 digits)
+//     if (licenseStr.length !== 15) {
+//       console.log('Failed length check:', licenseStr.length);
+//       return 'Invalid ID';
+//     }
+    
+//     // Extract first character (should be last name initial)
+//     const firstChar = licenseStr.charAt(0);
+    
+//     // Extract the 14 digits
+//     const digits = licenseStr.substring(1);
+    
+//     // Check if first character matches last name initial
+//     const lastNameInitial = lastNameStr.charAt(0).toUpperCase();
+//     if (firstChar.toUpperCase() !== lastNameInitial) {
+//       console.log('Failed initial check:', firstChar, 'vs', lastNameInitial);
+//       return 'Invalid ID';
+//     }
+    
+//     // Check if the remaining 14 characters are all digits
+//     if (!/^\d{14}$/.test(digits)) {
+//       console.log('Failed digit check:', digits);
+//       return 'Invalid ID';
+//     }
+    
+//     // Extract last 6 digits (YYMMDD format) - BUG FIXED: using substring(8, 14)
+//     const lastSixDigits = digits.substring(8, 14);
+//     console.log('Last 6 digits:', lastSixDigits);
+    
+//     // Convert Date of Birth to YYMMDD format
+//     // Ensure DOB is exactly 8 characters by padding with zeros if needed
+//     const paddedDob = dobStr.padStart(8, '0');
+//     const birthYear = paddedDob.substring(2, 4); // YY
+//     const birthMonth = paddedDob.substring(4, 6); // MM
+//     const birthDay = paddedDob.substring(6, 8);   // DD
+    
+//     const expectedYYMMDD = birthYear + birthMonth + birthDay;
+//     console.log('Expected YYMMDD:', expectedYYMMDD);
+    
+//     // Check if last 6 digits match DOB or DOB with month + 50
+//     let isValid = false;
+    
+//     // Check exact match
+//     if (lastSixDigits === expectedYYMMDD) {
+//       console.log('Exact match found');
+//       isValid = true;
+//     } else {
+//       // Check if month is modified by +50
+//       const originalMonth = parseInt(birthMonth, 10);
+//       let modifiedMonth = originalMonth + 50;
+      
+//       // Handle month overflow
+//       if (modifiedMonth > 99) {
+//         modifiedMonth = modifiedMonth - 50;
+//       }
+      
+//       const modifiedMonthStr = modifiedMonth.toString().padStart(2, '0');
+//       const modifiedYYMMDD = birthYear + modifiedMonthStr + birthDay;
+//       console.log('Modified YYMMDD (month+50):', modifiedYYMMDD);
+      
+//       if (lastSixDigits === modifiedYYMMDD) {
+//         console.log('Modified match found');
+//         isValid = true;
+//       }
+//     }
+    
+//     const result = isValid ? 'Valid ID' : 'Invalid ID';
+//     console.log('Final result:', result);
+//     return result;
+    
+//   } catch (error) {
+//     console.error('Validation error:', error);
+//     return 'Invalid ID';
+//   }
+// }
+
+// // MANUAL VALIDATION FUNCTION - Run this to validate existing data
+// function validateAllExistingData() {
+//   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+//   const sheet = spreadsheet.getSheets()[0];
+//   const lastRow = sheet.getLastRow();
+  
+//   if (lastRow < 2) {
+//     console.log('No data to validate');
+//     return;
+//   }
+  
+//   const dataRange = sheet.getRange(2, 1, lastRow-1, 7);
+//   const data = dataRange.getValues();
+  
+//   for (let i = 0; i < data.length; i++) {
+//     const row = data[i];
+//     const timestamp = row[0];
+//     const firstName = row[1];
+//     const lastName = row[2];
+//     const dateOfBirth = row[3].toString();
+//     const province = row[4];
+//     const licenseNumber = row[5].toString();
+//     const expiryDate = row[6];
+    
+//     let validity = 'Invalid ID';
+    
+//     if (province === 'Ontario') {
+//       validity = validateOntarioDriverLicense(dateOfBirth, lastName, licenseNumber);
+//     }
+    
+//     // Write back to column H
+//     sheet.getRange(i + 2, 8).setValue(validity);
+//   }
+  
+//   console.log('Validation completed for all existing data');
+// }
