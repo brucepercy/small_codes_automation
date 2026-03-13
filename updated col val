@@ -1,0 +1,79 @@
+function fetch_Email_And_Numbers_By_Name() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var lookupSheet = spreadsheet.getSheetByName("NameToEmailFetchBruce"); // Lookup Sheet
+  
+  var sourceSheets = [
+    { name: "Montreal (Quebec) Hiring Tracker", firstNameCol: 4, lastNameCol: 5, emailCol: 6, numberCol: 7, cityJobCol: 10 },
+    { name: "Events (ON)",                      firstNameCol: 4, lastNameCol: 5, emailCol: 6, numberCol: 7, cityJobCol: 13 },
+    { name: "109 (Call Center)",                firstNameCol: 4, lastNameCol: 5, emailCol: 6, numberCol: 7, cityJobCol: 13 },
+    { name: "Quebec Managers",                  firstNameCol: 1, lastNameCol: 2, emailCol: 3, numberCol: 4, cityJobCol: 5  },
+    { name: "Managers (TELUS ON)",              firstNameCol: 3, lastNameCol: 4, emailCol: 5, numberCol: 6, cityJobCol: 7  },
+    { name: "Backend Managers (ON)",            firstNameCol: 1, lastNameCol: 2, emailCol: 3, numberCol: 4, cityJobCol: 5  },
+
+  ];
+
+  var masterLookup = {}; // Object for quick lookup (name -> details)
+
+  // Process each source sheet
+  sourceSheets.forEach(sheetInfo => {
+    var sheet = spreadsheet.getSheetByName(sheetInfo.name);
+    if (!sheet) return; // Skip if sheet is missing
+    
+    var data = sheet.getDataRange().getValues(); // Get all data
+
+    for (var i = 1; i < data.length; i++) {
+      var firstName = data[i][sheetInfo.firstNameCol]?.toString().trim() || "";
+      var lastName = data[i][sheetInfo.lastNameCol]?.toString().trim() || "";
+      var email = data[i][sheetInfo.emailCol]?.toString().trim() || "";
+      var number = data[i][sheetInfo.numberCol]?.toString().trim() || "";
+      var cityJob = data[i][sheetInfo.cityJobCol]?.toString().trim() || "";
+
+      var fullName = (firstName + " " + lastName).toLowerCase();
+
+      if (!masterLookup[fullName]) {
+        masterLookup[fullName] = { firstName, lastName, email, number, cityJob };
+      }
+    }
+  });
+
+  // Get lookup names from NameToEmailFetchBruce
+  var lookupData = lookupSheet.getRange(2, 1, lookupSheet.getLastRow() - 1, 1).getValues(); // Column A (names)
+
+  // Iterate through lookup names
+  for (var j = 0; j < lookupData.length; j++) {
+    var lookupName = lookupData[j][0]?.toString().trim().toLowerCase().split(" ")[0]; // Take only the first word
+    if (!lookupName) continue;
+
+    var matchedEntries = []; // Array to store matched entries
+
+    // Check for matches in masterLookup
+    Object.keys(masterLookup).forEach(name => {
+      if (name.includes(lookupName)) {
+        matchedEntries.push(masterLookup[name]);
+      }
+    });
+
+    // If exactly one match is found, populate the data
+    if (matchedEntries.length === 1) {
+      var foundData = matchedEntries[0];
+
+      // Write data to the lookup sheet
+      lookupSheet.getRange(j + 2, 2).setValue(foundData.firstName || "Not Found");
+      lookupSheet.getRange(j + 2, 3).setValue(foundData.lastName || "Not Found");
+      lookupSheet.getRange(j + 2, 4).setValue(foundData.email || "Not Found");
+      lookupSheet.getRange(j + 2, 5).setValue(foundData.number || "Not Found");
+      lookupSheet.getRange(j + 2, 6).setValue(foundData.cityJob || "Not Found");
+      lookupSheet.getRange(j + 2, 7).setValue("Name_Matched_To_One_Rep");
+
+    } else if (matchedEntries.length > 1) {
+      // If multiple matches are found, indicate in column G to "Please Lookup Manually"
+      lookupSheet.getRange(j + 2, 2, 1, 5).setValue("L o o k u p      M a n u a l l y"); // Clear previous entries
+      lookupSheet.getRange(j + 2, 7).setValue(matchedEntries.length + " matches found. Please Lookup Manually");
+
+    } else {
+      // If no match is found, mark as "Not Found"
+      lookupSheet.getRange(j + 2, 2, 1, 5).setValue("Not Found");
+      lookupSheet.getRange(j + 2, 7).setValue("Rep_Does_Not_Exist_In_Active_Database");
+    }
+  }
+}
