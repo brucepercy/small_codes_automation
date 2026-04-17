@@ -1,0 +1,502 @@
+// ================= COUNT NAMES BY DATE =================
+
+function countNamesByDate() {
+  // Get the sheets
+  var sourceSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("June 2025 - Onwards");
+  var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+  
+  // Get the date from A2 of target sheet
+  var inputDate = targetSheet.getRange("A2").getValue();
+  
+  // Check if inputDate is a valid Date object
+  if (!(inputDate instanceof Date) || isNaN(inputDate)) {
+    SpreadsheetApp.getUi().alert("Please enter a valid date in cell A2");
+    return;
+  }
+  
+  // Extract just the date parts (without time)
+  var targetYear = inputDate.getFullYear();
+  var targetMonth = inputDate.getMonth();
+  var targetDay = inputDate.getDate();
+  
+  // Get all data from source sheet
+  var dataRange = sourceSheet.getDataRange();
+  var data = dataRange.getValues();
+  
+  // Assuming manager names are in a specific column (change column index as needed)
+  // For example, if manager names are in column H, use index 7 (0-based)
+  var managerColumnIndex = 7; // Column H
+  
+  // Create an object to count manager occurrences for the specific date
+  var managerCounts = {};
+  
+  // Process each row
+  for (var i = 1; i < data.length; i++) { // Start from 1 to skip header
+    var rowDate = data[i][0]; // Date is in column A (index 0)
+    
+    // Check if rowDate is a valid date
+    if (rowDate instanceof Date && !isNaN(rowDate)) {
+      // Compare dates (ignoring time)
+      if (rowDate.getFullYear() === targetYear &&
+          rowDate.getMonth() === targetMonth &&
+          rowDate.getDate() === targetDay) {
+        
+        var managerName = data[i][managerColumnIndex];
+        
+        // Check if manager name exists
+        if (managerName) {
+          managerName = managerName.toString().trim();
+          if (managerName) { // Check if not empty after trimming
+            managerCounts[managerName] = (managerCounts[managerName] || 0) + 1;
+          }
+        }
+      }
+    }
+  }
+  
+  // Get sorted unique manager names
+  var uniqueManagers = Object.keys(managerCounts).sort();
+  
+  // Clear previous results from row 2 onwards (B2:F)
+  if (targetSheet.getLastRow() > 2) {
+    targetSheet.getRange("B2:F" + targetSheet.getLastRow()).clearContent();
+  } else if (targetSheet.getLastRow() === 2) {
+    targetSheet.getRange("B2:F2").clearContent();
+  }
+  
+  // Calculate total count
+  var totalCount = 0;
+  
+  // Write results starting from row 2
+  uniqueManagers.forEach(function(manager, i) {
+    var count = managerCounts[manager];
+    totalCount += count;
+    targetSheet.getRange(i + 2, 2).setValue(manager);               // Column B (Manager Name)
+    targetSheet.getRange(i + 2, 3).setValue(count + "/" + count);   // Column C (Count in X/X format)
+    targetSheet.getRange(i + 2, 6).setValue(count);                 // Column F (Regular count)
+  });
+  
+  // Display total count in D10 in X/X format
+  targetSheet.getRange("D10").setValue(totalCount + "/" + totalCount);
+  
+  // Show completion message
+  SpreadsheetApp.getUi().alert("Completed! Found " + uniqueManagers.length + " unique managers for " + 
+                              (targetMonth + 1) + "/" + targetDay + "/" + targetYear +
+                              "\nTotal count: " + totalCount);
+}
+
+// ================= EMAIL GENERATOR =================
+
+function generateEmailFromCounter() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+
+  var date = sheet.getRange("A2").getValue();
+
+  if (!(date instanceof Date) || isNaN(date)) {
+    SpreadsheetApp.getUi().alert("Invalid date in A2");
+    return;
+  }
+
+  var formattedDate = Utilities.formatDate(
+    date,
+    Session.getScriptTimeZone(),
+    "M/d/yyyy"
+  );
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    SpreadsheetApp.getUi().alert("No data found. Run count first!");
+    return;
+  }
+
+  // Get data from B2:C
+  var dataRange = sheet.getRange(2, 2, lastRow - 1, 2);
+  var data = dataRange.getValues();
+
+  // Region mapping
+  const regionMap = {
+    "khusbu jadav": "TELUS Events Ontario",
+    "khushbu jadhav": "TELUS Events Ontario",
+    "nikiben bhavsar": "TELUS Events Ontario",
+    "paarth jain": "TELUS Events Ontario",
+    "merit larry duru": "TELUS Events Quebec",
+    "issihaka ibrahim": "TELUS Events Quebec"
+  };
+
+  var emailBody = `Hi Team,\n\n`;
+  emailBody += `Please find below the checklist completion status for :\n\n`;
+
+  var totalCompleted = 0;
+  var totalCount = 0;
+  var hasData = false;
+
+  data.forEach(function(row) {
+    var managerName = row[0];
+    var value = row[1];
+
+    if (!managerName || !value) return;
+    
+    managerName = managerName.toString().trim();
+    var key = managerName.toLowerCase();
+    
+    var program = regionMap[key] || "TELUS Events Ontario";
+    
+    var parts = value.toString().split("/");
+    var completed = parseInt(parts[0], 10);
+    var total = parseInt(parts[1], 10);
+    
+    if (isNaN(completed) || isNaN(total) || total === 0) return;
+    
+    hasData = true;
+    totalCompleted += completed;
+    totalCount += total;
+    
+    var percent = ((completed / total) * 100).toFixed(2);
+    var status = percent == 100 ? "✅" : "❌";
+    
+    emailBody += `**Manager Name:** ${managerName}\n`;
+    emailBody += `**Program:** ${program}\n`;
+    emailBody += `**Checklists Completed:** ${completed}/${total} (${percent}%) ${status}\n`;
+    
+    if (percent < 100) {
+      var missing = total - completed;
+      emailBody += `Checklist is missing for ${missing} lines. Checklist is not completed.\n`;
+    }
+    
+    emailBody += `\n`;
+  });
+
+  if (!hasData) {
+    SpreadsheetApp.getUi().alert("No valid data found to generate email");
+    return;
+  }
+
+  var overall = ((totalCompleted / totalCount) * 100).toFixed(2);
+  
+  emailBody += `Overall Percentage Calculation:\n`;
+  emailBody += `A total of ${totalCompleted} out of ${totalCount} checklists were completed, resulting in an overall checklist completion percentage of ${overall}% for ${formattedDate}.\n\n`;
+  emailBody += `Best Regards,\nBruce Percy`;
+
+  var subject = `Checklist Completion Summary – ${formattedDate}`;
+  
+  GmailApp.createDraft("", subject, emailBody);
+  
+  SpreadsheetApp.getUi().alert("✅ Email draft created successfully!");
+}
+
+// ================= RUN ALL =================
+
+function runAll() {
+  countNamesByDate();
+  SpreadsheetApp.flush(); // Force spreadsheet update
+  Utilities.sleep(1000); // Give it a second
+  generateEmailFromCounter();
+}
+
+// ================= MENU SETUP =================
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu("Bruce Automation")
+    .addItem("1️⃣ Count Names by Date", "countNamesByDate")
+    .addItem("2️⃣ Generate Email Draft", "generateEmailFromCounter")
+    .addSeparator()
+    .addItem("🚀 Run Full Automation", "runAll")
+    .addToUi();
+}
+
+
+// // ================= COUNT NAMES BY DATE =================
+
+// the correct count nams by data code function countNamesByDate() {
+//   // Get the sheets
+//   var sourceSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("June 2025 - Onwards");
+//   var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+  
+//   // Get the date from A2 of target sheet
+//   var inputDate = targetSheet.getRange("A2").getValue();
+  
+//   // Check if inputDate is a valid Date object
+//   if (!(inputDate instanceof Date) || isNaN(inputDate)) {
+//     SpreadsheetApp.getUi().alert("Please enter a valid date in cell A2");
+//     return;
+//   }
+  
+//   // Extract just the date parts (without time)
+//   var targetYear = inputDate.getFullYear();
+//   var targetMonth = inputDate.getMonth();
+//   var targetDay = inputDate.getDate();
+  
+//   // Get all data from source sheet
+//   var dataRange = sourceSheet.getDataRange();
+//   var data = dataRange.getValues();
+  
+//   // Assuming manager names are in a specific column (change column index as needed)
+//   // For example, if manager names are in column h, use index 1 (0-based)
+//   var managerColumnIndex = 7; // Change this to the correct column index
+  
+//   // Create an object to count manager occurrences for the specific date
+//   var managerCounts = {};
+  
+//   // Process each row
+//   for (var i = 1; i < data.length; i++) { // Start from 1 to skip header
+//     var rowDate = data[i][0]; // Date is in column A (index 0)
+    
+//     // Check if rowDate is a valid date
+//     if (rowDate instanceof Date && !isNaN(rowDate)) {
+//       // Compare dates (ignoring time)
+//       if (rowDate.getFullYear() === targetYear &&
+//           rowDate.getMonth() === targetMonth &&
+//           rowDate.getDate() === targetDay) {
+        
+//         var managerName = data[i][managerColumnIndex];
+        
+//         // Check if manager name exists
+//         if (managerName) {
+//           managerName = managerName.toString().trim();
+//           if (managerName) { // Check if not empty after trimming
+//             managerCounts[managerName] = (managerCounts[managerName] || 0) + 1;
+//           }
+//         }
+//       }
+//     }
+//   }
+  
+//   // Get sorted unique manager names
+//   var uniqueManagers = Object.keys(managerCounts).sort();
+  
+//   // Clear previous results from row 2 onwards (B2:F)
+//   if (targetSheet.getLastRow() > 2) {
+//     targetSheet.getRange("B2:F" + targetSheet.getLastRow()).clearContent();
+//   } else if (targetSheet.getLastRow() === 2) {
+//     targetSheet.getRange("B2:F2").clearContent();
+//   }
+  
+//   // Calculate total count
+//   var totalCount = 0;
+  
+//   // Write results starting from row 2
+//   uniqueManagers.forEach(function(manager, i) {
+//     var count = managerCounts[manager];
+//     totalCount += count;
+//     targetSheet.getRange(i + 2, 2).setValue(manager);               // Column B (Manager Name)
+//     targetSheet.getRange(i + 2, 3).setValue(count + "/" + count);   // Column C (Count in X/X format)
+//     targetSheet.getRange(i + 2, 6).setValue(count);                 // Column F (Regular count)
+//   });
+  
+//   // Display total count in D10 in X/X format
+//   targetSheet.getRange("D10").setValue(totalCount + "/" + totalCount);
+  
+//   // Show completion message
+//   SpreadsheetApp.getUi().alert("Completed! Found " + uniqueManagers.length + " unique managers for " + 
+//                               (targetMonth + 1) + "/" + targetDay + "/" + targetYear +
+//                               "\nTotal count: " + totalCount);
+// }
+
+// // Add menu option for easy access
+
+
+// after that just create the emal whats so hard brother?
+
+
+// function countNamesByDate() {
+//   var sourceSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("June 2025 - Onwards");
+//   var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+
+//   var inputDate = targetSheet.getRange("A2").getValue();
+
+//   if (!(inputDate instanceof Date) || isNaN(inputDate)) {
+//     SpreadsheetApp.getUi().alert("Please enter a valid date in cell A2");
+//     return;
+//   }
+
+//   var targetYear = inputDate.getFullYear();
+//   var targetMonth = inputDate.getMonth();
+//   var targetDay = inputDate.getDate();
+
+//   var data = sourceSheet.getDataRange().getValues();
+//   var managerColumnIndex = 7; // Column H (0-indexed)
+
+//   var managerCounts = {};
+
+//   // Count occurrences
+//   for (var i = 1; i < data.length; i++) {
+//     var rowDate = data[i][0];
+    
+//     if (rowDate instanceof Date && !isNaN(rowDate)) {
+//       if (
+//         rowDate.getFullYear() === targetYear &&
+//         rowDate.getMonth() === targetMonth &&
+//         rowDate.getDate() === targetDay
+//       ) {
+//         var managerName = data[i][managerColumnIndex];
+        
+//         if (managerName) {
+//           managerName = managerName.toString().trim();
+          
+//           if (managerName) {
+//             managerCounts[managerName] = (managerCounts[managerName] || 0) + 1;
+//           }
+//         }
+//       }
+//     }
+//   }
+
+//   // Clear old output (B2:F)
+//   var lastRow = targetSheet.getLastRow();
+//   if (lastRow >= 2) {
+//     targetSheet.getRange("B2:F" + lastRow).clearContent();
+//   }
+
+//   // Write new data
+//   var row = 2;
+//   var totalCount = 0;
+
+//   for (var manager in managerCounts) {
+//     var count = managerCounts[manager];
+//     totalCount += count;
+
+//     targetSheet.getRange(row, 2).setValue(manager);        // Column B: Manager Name
+//     targetSheet.getRange(row, 3).setValue(count + "/" + count); // Column C: Count/Count
+//     targetSheet.getRange(row, 6).setValue(count);          // Column F: Raw Count
+    
+//     row++;
+//   }
+
+//   // Update total in D10
+//   targetSheet.getRange("D10").setValue(totalCount + "/" + totalCount);
+
+//   SpreadsheetApp.getUi().alert(
+//     "Count completed!\nTotal records: " + totalCount
+//   );
+  
+//   return totalCount;
+// }
+
+// // ================= EMAIL GENERATOR =================
+
+// function generateEmailFromCounter() {
+//   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Name Counter Date");
+
+//   var date = sheet.getRange("A2").getValue();
+
+//   if (!(date instanceof Date) || isNaN(date)) {
+//     SpreadsheetApp.getUi().alert("Invalid date in A2");
+//     return;
+//   }
+
+//   var formattedDate = Utilities.formatDate(
+//     date,
+//     Session.getScriptTimeZone(),
+//     "M/d/yyyy"
+//   );
+
+//   var lastRow = sheet.getLastRow();
+//   if (lastRow < 2) {
+//     SpreadsheetApp.getUi().alert("No data found. Run count first!");
+//     return;
+//   }
+
+//   // Get data from B2:C
+//   var dataRange = sheet.getRange(2, 2, lastRow - 1, 2);
+//   var data = dataRange.getValues();
+
+//   // Region mapping
+//   const regionMap = {
+//     "khusbu jadav": "TELUS Events Ontario",
+//     "khushbu jadhav": "TELUS Events Ontario",
+//     "nikiben bhavsar": "TELUS Events Ontario",
+//     "paarth jain": "TELUS Events Ontario",
+//     "merit larry duru": "TELUS Events Quebec",
+//     "issihaka ibrahim": "TELUS Events Quebec"
+//   };
+
+//   var emailBody = `Hi Team,\n\n`;
+//   emailBody += `Please find below the checklist completion status for :\n\n`;
+
+//   var totalCompleted = 0;
+//   var totalCount = 0;
+//   var hasData = false;
+
+//   data.forEach(function(row) {
+//     var managerName = row[0];
+//     var value = row[1];
+
+//     if (!managerName || !value) return;
+    
+//     managerName = managerName.toString().trim();
+//     var key = managerName.toLowerCase();
+    
+//     var program = regionMap[key] || "TELUS Events Ontario";
+    
+//     var parts = value.toString().split("/");
+//     var completed = parseInt(parts[0], 10);
+//     var total = parseInt(parts[1], 10);
+    
+//     if (isNaN(completed) || isNaN(total) || total === 0) return;
+    
+//     hasData = true;
+//     totalCompleted += completed;
+//     totalCount += total;
+    
+//     var percent = ((completed / total) * 100).toFixed(2);
+//     var status = percent == 100 ? "✅" : "❌";
+    
+//     emailBody += `**Manager Name:** ${managerName}\n`;
+//     emailBody += `**Program:** ${program}\n`;
+//     emailBody += `**Checklists Completed:** ${completed}/${total} (${percent}%) ${status}\n`;
+    
+//     if (percent < 100) {
+//       var missing = total - completed;
+//       emailBody += `Checklist is missing for ${missing} lines. Checklist is not completed.\n`;
+//     }
+    
+//     emailBody += `\n`;
+//   });
+
+//   if (!hasData) {
+//     SpreadsheetApp.getUi().alert("No valid data found to generate email");
+//     return;
+//   }
+
+//   var overall = ((totalCompleted / totalCount) * 100).toFixed(2);
+  
+//   emailBody += `Overall Percentage Calculation:\n`;
+//   emailBody += `A total of ${totalCompleted} out of ${totalCount} checklists were completed, resulting in an overall checklist completion percentage of ${overall}% for ${formattedDate}.\n\n`;
+//   emailBody += `Best Regards,\nBruce Percy`;
+
+//   var subject = `Checklist Completion Summary – ${formattedDate}`;
+  
+//   GmailApp.createDraft("", subject, emailBody);
+  
+//   SpreadsheetApp.getUi().alert("✅ Email draft created successfully!");
+// }
+
+// // ================= RUN ALL =================
+
+// function runAll() {
+//   countNamesByDate();
+//   Utilities.sleep(1000); // Small delay to ensure data is written
+//   generateEmailFromCounter();
+// }
+
+// // ================= MENU SETUP =================
+
+// function onOpen() {
+//   var ui = SpreadsheetApp.getUi();
+//   ui.createMenu("Bruce Automation")
+//     .addItem("1️⃣ Count Names by Date", "countNamesByDate")
+//     .addItem("2️⃣ Generate Email Draft", "generateEmailFromCounter")
+//     .addSeparator()
+//     .addItem("🚀 Run Full Automation", "runAll")
+//     .addToUi();
+// }
+
+// // Optional: Run this once to set up trigger
+// function setupDailyTrigger() {
+//   ScriptApp.newTrigger('runAll')
+//     .timeBased()
+//     .everyDays(1)
+//     .atHour(9)
+//     .create();
+// }
