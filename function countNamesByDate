@@ -1,0 +1,78 @@
+function generateChecklistEmail() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Data");
+  const data = sheet.getDataRange().getValues();
+
+  let date = "";
+  let totalCompleted = 0;
+  let totalCount = 0;
+
+  let managers = {};
+
+  // Name cleanup map
+  const nameMap = {
+    "khusbhu": "Khushbu Jadav",
+    "khushbu": "Khushbu Jadav",
+    "khusbu": "Khushbu Jadav",
+    "khushbu jadav": "Khushbu Jadav",
+    "khushbu jadhav": "Khushbu Jadav",
+    "paarth jain": "Paarth Jain"
+  };
+
+  for (let i = 1; i < data.length; i++) {
+    let [d, name, completed, total] = data[i];
+
+    if (!name) continue;
+
+    date = date || d;
+
+    let cleanName = name.toString().trim().toLowerCase();
+    cleanName = nameMap[cleanName] || name;
+
+    if (!managers[cleanName]) {
+      managers[cleanName] = { completed: 0, total: 0 };
+    }
+
+    managers[cleanName].completed += Number(completed);
+    managers[cleanName].total += Number(total);
+
+    totalCompleted += Number(completed);
+    totalCount += Number(total);
+  }
+
+  let email = `Subject: Checklist Completion Summary – ${date}\n\n`;
+  email += `Hi Team,\nPlease find below the checklist completion status for :\n\n`;
+
+  for (let name in managers) {
+    let { completed, total } = managers[name];
+
+    let percent = ((completed / total) * 100).toFixed(2);
+    let status = percent == 100 ? "✅" : "❌";
+
+    let program =
+      name === "Merit Larry Duru" || name === "Issihaka Ibrahim"
+        ? "Telus Events Quebec"
+        : "Telus Events Ontario";
+
+    email += `**Manager Name:** ${name}\n`;
+    email += `**Program:** ${program}\n`;
+    email += `**Checklists Completed:** ${completed}/${total} (${percent}%) ${status}\n`;
+
+    if (percent < 100) {
+      let missing = total - completed;
+      email += `Checklist is missing for ${missing} lines. Checklist is not completed.\n`;
+    }
+
+    email += `\n`;
+  }
+
+  let overallPercent = ((totalCompleted / totalCount) * 100).toFixed(2);
+
+  email += `Overall Percentage Calculation:\n`;
+  email += `A total of ${totalCompleted} out of ${totalCount} checklists were completed, resulting in an overall checklist completion percentage of ${overallPercent}% for ${date}.\n\n`;
+  email += `Best Regards,\nBruce Percy`;
+
+  Logger.log(email);
+
+  // Optional: Copy to clipboard popup
+  SpreadsheetApp.getUi().alert(email);
+}
