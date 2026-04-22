@@ -1,0 +1,179 @@
+function copyHSIC_WHSIA_TTV() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Get the sheets
+  var sourceSheet = ss.getSheetByName('3/27/2025-Present'); // Order Tracker
+  var targetSheet = ss.getSheetByName('HSIC,WHSIA, TTV'); // Your new sheet
+  
+  // Get the selection type from B1
+  var selectionType = targetSheet.getRange('B1').getValue();
+  
+  // Validate selection type
+  if (selectionType !== 'Date' && selectionType !== 'Date Range') {
+    SpreadsheetApp.getUi().alert('Please select either "Date" or "Date Range" in cell B1.');
+    return;
+  }
+  
+  var startDate, endDate;
+  
+  if (selectionType === 'Date') {
+    startDate = targetSheet.getRange('C1').getValue();
+    endDate = startDate;
+    if (!startDate || !(startDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Please select a valid date in cell C1.');
+      return;
+    }
+  } else {
+    startDate = targetSheet.getRange('E1').getValue();
+    endDate = targetSheet.getRange('F1').getValue();
+    if (!startDate || !(startDate instanceof Date) || !endDate || !(endDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Please select valid start and end dates in cells E1 and F1.');
+      return;
+    }
+    if (endDate < startDate) {
+      SpreadsheetApp.getUi().alert('End date cannot be before start date.');
+      return;
+    }
+  }
+  
+  var programFilter = targetSheet.getRange('C4').getValue();
+  var managerFilter = targetSheet.getRange('C6').getValue();
+  
+  var programSelected = (programFilter !== 'Entire Program' && programFilter !== '' && programFilter !== 'All Events Only');
+  var managerSelected = (managerFilter !== 'Entire Program' && managerFilter !== '' && managerFilter !== 'All Events Only');
+  
+  if (programSelected && managerSelected) {
+    SpreadsheetApp.getUi().alert('Please select only ONE filter - either Program OR Manager, not both.');
+    return;
+  }
+  if (managerSelected && programFilter !== 'Entire Program' && programFilter !== 'All Events Only') {
+    SpreadsheetApp.getUi().alert('Program must be set to "Entire Program" or "All Events Only".\n\nPlease set Program to "Entire Program" or "All Events Only" and run again.');
+    return;
+  }
+  if (programFilter === 'All Events Only' && managerFilter !== 'All Events Only') {
+    SpreadsheetApp.getUi().alert('When Program is set to "All Events Only", Manager must also be set to "All Events Only".\n\nPlease set Manager to "All Events Only" and run again.');
+    return;
+  }
+  if (managerFilter === 'All Events Only' && programFilter !== 'All Events Only') {
+    SpreadsheetApp.getUi().alert('When Manager is set to "All Events Only", Program must also be set to "All Events Only".\n\nPlease set Program to "All Events Only" and run again.');
+    return;
+  }
+  
+  var sourceData = sourceSheet.getDataRange().getValues();
+  var headers = sourceData[0];
+  
+  var dateCol = 0;
+  var programCol = 3;
+  var managerCol = 6;
+  
+  // <-- NEW: Add column AE (index 30, zero‑based) for Koodo Internet
+  var koodoCol = 30; // Column AE
+  
+  // Original product columns + Koodo Internet
+  var productColumns = {
+    'Pure Fiber Internet MRR': 41,
+    'West HSIA MRR': 34,
+    'West Optik TV MRR': 35,
+    'West Stream Plus': 36,
+    'Koodo Internet': koodoCol   // <-- NEW
+  };
+  
+  var timeZone = Session.getScriptTimeZone();
+  var formattedStartDate = Utilities.formatDate(startDate, timeZone, 'M/d/yyyy');
+  var formattedEndDate = Utilities.formatDate(endDate, timeZone, 'M/d/yyyy');
+  
+  var matchingRows = [];
+  
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var rowDate = row[dateCol];
+    var rowProgram = row[programCol];
+    var rowManager = row[managerCol];
+    
+    if (rowDate instanceof Date) {
+      var rowFormattedDate = Utilities.formatDate(rowDate, timeZone, 'M/d/yyyy');
+      var dateMatches = false;
+      if (selectionType === 'Date') {
+        dateMatches = (rowFormattedDate === formattedStartDate);
+      } else {
+        var rowTime = rowDate.getTime();
+        var startTime = startDate.getTime();
+        var endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        var endTimeInclusive = endOfDay.getTime();
+        dateMatches = (rowTime >= startTime && rowTime <= endTimeInclusive);
+      }
+      
+      var filterMatches = true;
+      if (programFilter === 'All Events Only') {
+        filterMatches = (rowProgram === 'TELUS Events Ontario' || rowProgram === 'TELUS Events Quebec');
+      } else if (programSelected) {
+        filterMatches = (rowProgram === programFilter);
+      } else if (managerSelected) {
+        filterMatches = (rowManager === managerFilter);
+      }
+      
+      // <-- NEW: Check all product columns (including Koodo)
+      var hasProductData = false;
+      for (var product in productColumns) {
+        var colIndex = productColumns[product];
+        var cellValue = row[colIndex];
+        if (cellValue !== '' && cellValue !== null && cellValue !== undefined) {
+          hasProductData = true;
+          break;
+        }
+      }
+      
+      if (dateMatches && filterMatches && hasProductData) {
+        matchingRows.push(row);
+      }
+    }
+  }
+  
+  // <-- NEW: Create output with an extra column "Koodo Internet Sale"
+  var newHeaders = headers.concat(['Koodo Internet Sale']);
+  var outputRows = [];
+  var koodoCount = 0;
+  
+  for (var i = 0; i < matchingRows.length; i++) {
+    var row = matchingRows[i];
+    var koodoValue = row[koodoCol];
+    var saleFlag = (koodoValue !== '' && koodoValue !== null && koodoValue !== undefined) ? 1 : 0;
+    if (saleFlag === 1) koodoCount++;
+    var newRow = row.concat([saleFlag]);
+    outputRows.push(newRow);
+  }
+  
+  // Clear from row 10, including the new column
+  var lastRow = targetSheet.getLastRow();
+  if (lastRow >= 10) {
+    targetSheet.getRange(10, 1, lastRow - 9, newHeaders.length).clearContent();
+  }
+  
+  if (outputRows.length > 0) {
+    targetSheet.getRange(10, 1, 1, newHeaders.length).setValues([newHeaders]);
+    targetSheet.getRange(11, 1, outputRows.length, newHeaders.length).setValues(outputRows);
+    targetSheet.getRange(10, 1, 1, newHeaders.length).setFontWeight('bold');
+    
+    var summaryRow = 11 + outputRows.length + 1;
+    targetSheet.getRange(summaryRow, 1).setValue('Summary: ' + outputRows.length + ' entries found');
+    targetSheet.getRange(summaryRow + 1, 1).setValue('Koodo Internet Sales: ' + koodoCount);  // <-- NEW
+    var dateInfo = selectionType === 'Date' ? formattedStartDate : formattedStartDate + ' to ' + formattedEndDate;
+    targetSheet.getRange(summaryRow + 2, 1).setValue('Date: ' + dateInfo);
+    var filterInfo = '';
+    if (programFilter === 'All Events Only') {
+      filterInfo = 'All Events Only';
+    } else if (programSelected) {
+      filterInfo = 'Program: ' + programFilter;
+    } else if (managerSelected) {
+      filterInfo = 'Manager: ' + managerFilter;
+    } else {
+      filterInfo = 'All Programs & Managers';
+    }
+    targetSheet.getRange(summaryRow + 3, 1).setValue('Filter: ' + filterInfo);
+    
+    SpreadsheetApp.getUi().alert('Successfully copied ' + outputRows.length + ' entries.\nKoodo Internet Sales: ' + koodoCount);
+  } else {
+    SpreadsheetApp.getUi().alert('No matching Order Tracker entries found for the specified criteria.');
+  }
+}
