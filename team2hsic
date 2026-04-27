@@ -1,0 +1,174 @@
+function copyHSIC_WHSIA_TTV() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sourceSheet = ss.getSheetByName('Form Responses 1');
+  var targetSheet = ss.getSheetByName('HSIC,WHSIA, TTV');
+
+  // ---- 1. Filters ----
+  var selectionType = targetSheet.getRange('B1').getValue();
+  if (selectionType !== 'Date' && selectionType !== 'Date Range') {
+    SpreadsheetApp.getUi().alert('Please select either "Date" or "Date Range" in cell B1.');
+    return;
+  }
+
+  var startDate, endDate;
+  if (selectionType === 'Date') {
+    startDate = targetSheet.getRange('C1').getValue();
+    endDate = startDate;
+    if (!(startDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Please enter a valid date in C1.');
+      return;
+    }
+  } else {
+    startDate = targetSheet.getRange('E1').getValue();
+    endDate = targetSheet.getRange('F1').getValue();
+    if (!(startDate instanceof Date) || !(endDate instanceof Date)) {
+      SpreadsheetApp.getUi().alert('Please enter valid dates in E1 and F1.');
+      return;
+    }
+    if (endDate < startDate) {
+      SpreadsheetApp.getUi().alert('End date cannot be before start date.');
+      return;
+    }
+  }
+
+  var programFilter = targetSheet.getRange('C4').getValue();
+  var managerFilter = targetSheet.getRange('C6').getValue();
+
+  var programSelected = (programFilter !== 'Entire Program' && programFilter !== '' && programFilter !== 'All Events Only');
+  var managerSelected = (managerFilter !== 'Entire Program' && managerFilter !== '' && managerFilter !== 'All Events Only');
+
+  if (programSelected && managerSelected) {
+    SpreadsheetApp.getUi().alert('Please select only ONE filter – either Program OR Manager.');
+    return;
+  }
+
+  // ---- 2. Source data ----
+  var sourceData = sourceSheet.getDataRange().getValues();
+  if (sourceData.length < 2) {
+    SpreadsheetApp.getUi().alert('Source sheet is empty.');
+    return;
+  }
+
+  var headers = sourceData[0];
+
+  var dateCol = 0;
+  var programCol = 3;
+  var managerCol = 6;
+
+  var koodoSaleCol = 30; // AE (still used as flag ONLY)
+
+  // ---- PRODUCT COLUMNS (Mobility EXCLUDED completely) ----
+  var productColumns = {
+    'East SHS MRR': 24,            // X
+    'East TOS MRR': 26,            // Z
+    'East LWC MRR': 27,            // AA
+    'Koodo Internet MRR': 28,     // AB
+    'Koodo TV MRR': 29,           // AC
+    'West SHS MRR': 30,           // AD
+    'West HSIA MRR': 32,          // AF
+    'East/West Optik TV MRR': 33, // AG
+    'West Stream Plus': 34,       // AH
+    'West HP MRR': 35,            // AI
+    'West TOS MRR': 36,           // AJ
+    'West LWC MRR': 37,           // AK
+    'Smart Energy MRR': 38,       // AL
+    'Pure Fiber Internet MRR': 39 // AM
+  };
+
+  // ---- FIXED COLUMN SET (NO MOBILITY INCLUDED) ----
+  var outputColumnIndexes = [
+    0, 3, 6,          // date, program, manager
+    24, 26, 27, 28, 29,
+    30, 32, 33, 34, 35,
+    36, 37, 38, 39,
+    koodoSaleCol
+  ];
+
+  // ---- 3. FILTER ROWS ----
+  var matchingRows = [];
+  var startTime = startDate.getTime();
+  var endTime = (selectionType === 'Date')
+    ? startTime
+    : new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999).getTime();
+
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+
+    var rowDate = row[dateCol];
+    if (!(rowDate instanceof Date)) continue;
+
+    var rowTime = rowDate.getTime();
+    if (rowTime < startTime || rowTime > endTime) continue;
+
+    var rowProgram = row[programCol];
+    var rowManager = row[managerCol];
+
+    var filterMatches = true;
+
+    if (programSelected) {
+      filterMatches = (rowProgram === programFilter);
+    } else if (managerSelected) {
+      filterMatches = (rowManager === managerFilter);
+    }
+
+    if (!filterMatches) continue;
+
+    // product check
+    var hasProductData = false;
+    for (var prod in productColumns) {
+      var val = row[productColumns[prod]];
+      if (val !== '' && val !== null && val !== undefined) {
+        hasProductData = true;
+        break;
+      }
+    }
+
+    if (!hasProductData && !row[koodoSaleCol]) continue;
+
+    matchingRows.push(row);
+  }
+
+  // ---- 4. BUILD OUTPUT ----
+  var newHeaders = headers.concat(['Koodo Internet Sale']);
+  var outputRows = [];
+  var koodoCount = 0;
+
+  for (var i = 0; i < matchingRows.length; i++) {
+    var row = matchingRows[i];
+
+    var saleFlag = (row[koodoSaleCol] !== '' && row[koodoSaleCol] != null) ? 1 : 0;
+    if (saleFlag === 1) koodoCount++;
+
+    // ONLY selected columns (NO MOBILITY EVER)
+    var extendedRow = outputColumnIndexes.map(function(idx) {
+      return row[idx];
+    });
+
+    extendedRow.push(saleFlag);
+    outputRows.push(extendedRow);
+  }
+
+  // ---- 5. CLEAR SHEET (FIXED) ----
+  targetSheet.getRange(10, 1, 600, targetSheet.getMaxColumns()).clearContent();
+
+  // ---- 6. WRITE ----
+  if (outputRows.length > 0) {
+
+    targetSheet.getRange(10, 1, 1, newHeaders.length)
+      .setValues([newHeaders])
+      .setFontWeight('bold');
+
+    targetSheet.getRange(11, 1, outputRows.length, newHeaders.length)
+      .setValues(outputRows);
+
+    SpreadsheetApp.flush();
+
+    SpreadsheetApp.getUi().alert(
+      'Done!\nRows: ' + outputRows.length +
+      '\nKoodo Sales: ' + koodoCount
+    );
+
+  } else {
+    SpreadsheetApp.getUi().alert('No matching data found.');
+  }
+}
