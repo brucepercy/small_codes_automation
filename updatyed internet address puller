@@ -1,0 +1,364 @@
+function fetchOrderTrackerDataByAddress() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  var telusSheet = ss.getSheetByName('telus data');
+  var orderSheet = ss.getSheetByName('order tracker data');
+  
+  var telusData = telusSheet.getDataRange().getValues();
+  var orderData = orderSheet.getDataRange().getValues();
+  
+  var addressCol = 14; // Column O
+  
+  var orderMap = {};
+  
+  for (var i = 1; i < orderData.length; i++) {
+    var orderRow = orderData[i];
+    var rawOrderAddress = orderRow[addressCol];
+    if (!rawOrderAddress || rawOrderAddress === '') continue;
+    
+    var cleanedOrderAddress = cleanAddressForMatching(rawOrderAddress);
+    
+    if (!orderMap[cleanedOrderAddress]) {
+      var fullRowData = [];
+      for (var j = 0; j < orderRow.length; j++) {
+        fullRowData.push(orderRow[j] !== undefined ? orderRow[j] : '');
+      }
+      orderMap[cleanedOrderAddress] = fullRowData;
+    }
+  }
+  
+  var matchesFound = 0;
+  var rowsUpdated = 0;
+  
+  for (var i = 1; i < telusData.length; i++) {
+    var telusRow = telusData[i];
+    var rawTelusAddress = telusRow[addressCol];
+    
+    if (!rawTelusAddress || rawTelusAddress === '') continue;
+    
+    var cleanedTelusAddress = cleanAddressForMatching(rawTelusAddress);
+    var matchedOrderData = orderMap[cleanedTelusAddress];
+    
+    if (matchedOrderData) {
+      matchesFound++;
+      var startColumn = 20;
+      
+      for (var j = 0; j < matchedOrderData.length; j++) {
+        var targetColumn = startColumn + j;
+        telusSheet.getRange(i + 1, targetColumn + 1).setValue(matchedOrderData[j]);
+      }
+      rowsUpdated++;
+    }
+  }
+  
+  SpreadsheetApp.getUi().alert('Address matching complete!\n\n' +
+    'Total unique addresses in order tracker: ' + Object.keys(orderMap).length + '\n' +
+    'Matches found in telus data: ' + matchesFound + '\n' +
+    'Rows updated in telus data: ' + rowsUpdated);
+}
+
+
+function cleanAddressForMatching(address) {
+  if (!address || address === '') return '';
+  
+  // Uppercase and strip everything after the first comma (city, province, postal)
+  var cleaned = address.toString().trim().toUpperCase();
+  cleaned = cleaned.split(',')[0].trim();
+  
+  // --- Step 1: Strip unit/suite prefixes with explicit separator ---
+  // Handles: "1 - 38 COULSON", "PH8 - 24 SEELEY", "2 # 38 COULSON"
+  cleaned = cleaned.replace(/^[A-Z0-9]+ - /, '');
+  cleaned = cleaned.replace(/^[A-Z0-9]+#\s*/, '');
+  
+  // --- Step 2: Strip "digit-digit" dash format (no spaces) ---
+  // Handles: "3-38 COULSON" → "38 COULSON"
+  cleaned = cleaned.replace(/^\d+-(\d)/, '$1');
+
+  // --- Step 3: Strip alphanumeric unit prefix before a number ---
+  // Handles: "B11 24 SEELEY" → "24 SEELEY"
+  // Matches a leading token that starts with a letter (e.g. B11, PH8, APT3)
+  cleaned = cleaned.replace(/^[A-Z]+\d+\s+(\d)/, '$1');
+
+  // --- Step 4: Strip plain numeric unit prefix before a larger/different number ---
+  // Handles: "303 425 DUNDAS", "8 6902 WATERS", "17 1507 35 AVE",
+  //          "11 16 GEORGE", "32 6263 LUND", "3 38 COULSON"
+  // Logic: if the first token is a number AND the second token is also a number,
+  // the first is a unit — drop it.
+  var parts = cleaned.split(/\s+/);
+  if (parts.length >= 3 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+    // First two tokens are both numbers → first is unit, drop it
+    parts.shift();
+    cleaned = parts.join(' ');
+  }
+
+  // --- Step 5: Rebuild to "streetNumber streetName" (first two tokens only) ---
+  parts = cleaned.split(/\s+/);
+  if (parts.length >= 2) {
+    cleaned = parts[0] + ' ' + parts[1];
+  }
+
+  // --- Step 6: Strip common street type suffixes ---
+  var suffixes = [
+    'STREET', 'ST', 'DRIVE', 'DR', 'CIRCLE', 'CIR',
+    'AVENUE', 'AVE', 'ROAD', 'RD', 'COURT', 'CT',
+    'CRESCENT', 'CRES', 'LANE', 'LN', 'BOULEVARD', 'BLVD',
+    'PLACE', 'PL', 'WAY', 'TERRACE', 'TER', 'TRAIL', 'TRL',
+    'CLOSE', 'GATE', 'GROVE', 'HEIGHTS', 'HTS', 'PARK', 'PATH'
+  ];
+  
+  var suffixRegex = new RegExp('\\s+(' + suffixes.join('|') + ')$', 'i');
+  cleaned = cleaned.replace(suffixRegex, '');
+  
+  return cleaned.trim();
+}
+
+
+// function fetchOrderTrackerDataByAddress() {
+//   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+//   // Get the sheets
+//   var telusSheet = ss.getSheetByName('telus data');
+//   var orderSheet = ss.getSheetByName('order tracker data');
+  
+//   // Get all data from both sheets
+//   var telusData = telusSheet.getDataRange().getValues();
+//   var orderData = orderSheet.getDataRange().getValues();
+  
+//   // Column O is index 14 (0-indexed)
+//   var addressCol = 14; // Column O
+  
+//   // Create a map of cleaned addresses to full rows from order tracker data
+//   var orderMap = {};
+  
+//   // Process order tracker data (skip header row, start from index 1)
+//   for (var i = 1; i < orderData.length; i++) {
+//     var orderRow = orderData[i];
+    
+//     // Get address from column O
+//     var rawOrderAddress = orderRow[addressCol];
+//     if (!rawOrderAddress || rawOrderAddress === '') continue;
+    
+//     // Clean the address from order tracker data
+//     var cleanedOrderAddress = cleanAddressForMatching(rawOrderAddress);
+    
+//     // Store the first occurrence only
+//     if (!orderMap[cleanedOrderAddress]) {
+//       // Store the entire row (all columns, no cap)
+//       var fullRowData = [];
+//       for (var j = 0; j < orderRow.length; j++) {
+//         fullRowData.push(orderRow[j] !== undefined ? orderRow[j] : '');
+//       }
+//       orderMap[cleanedOrderAddress] = fullRowData;
+//     }
+//   }
+  
+//   // Now process telus data and add matches
+//   var matchesFound = 0;
+//   var rowsUpdated = 0;
+  
+//   // Start from row 1 (skip header) in telus data
+//   for (var i = 1; i < telusData.length; i++) {
+//     var telusRow = telusData[i];
+//     var rawTelusAddress = telusRow[addressCol];
+    
+//     if (!rawTelusAddress || rawTelusAddress === '') continue;
+    
+//     // Clean the address from telus data
+//     var cleanedTelusAddress = cleanAddressForMatching(rawTelusAddress);
+    
+//     // Look for match in order map
+//     var matchedOrderData = orderMap[cleanedTelusAddress];
+    
+//     if (matchedOrderData) {
+//       matchesFound++;
+
+
+
+
+      
+//       // Start column Q (index 16, 0-indexed)
+//       var startColumn = 20;
+      
+//       // Write the entire matched order row to the telus sheet, no column limit
+//       for (var j = 0; j < matchedOrderData.length; j++) {
+//         var targetColumn = startColumn + j;
+//         telusSheet.getRange(i + 1, targetColumn + 1).setValue(matchedOrderData[j]);
+//       }
+//       rowsUpdated++;
+//     }
+//   }
+  
+//   // Show summary
+//   SpreadsheetApp.getUi().alert('Address matching complete!\n\n' +
+//     'Total unique addresses in order tracker: ' + Object.keys(orderMap).length + '\n' +
+//     'Matches found in telus data: ' + matchesFound + '\n' +
+//     'Rows updated in telus data: ' + rowsUpdated);
+// }
+
+// // Helper function to clean address for matching (unchanged)
+// function cleanAddressForMatching(address) {
+//   if (!address || address === '') return '';
+  
+//   var cleaned = address.toString().trim().toUpperCase();
+  
+//   // Remove unit/suite prefix like "1 - ", "PH8 - ", "2 - ", "11 - "
+//   cleaned = cleaned.replace(/^[A-Z0-9]+ - /, '');
+//   cleaned = cleaned.replace(/^[A-Z0-9]+#/, '');
+  
+//   // Special case: "4201 50E RUE" -> extract "50E RUE"
+//   var specialMatch = cleaned.match(/^\d+\s+(\d+[A-Z]\s+\w+)/);
+//   if (specialMatch) {
+//     cleaned = specialMatch[1];
+//   }
+  
+//   // Split into parts
+//   var parts = cleaned.split(/\s+/);
+  
+//   // If we have at least 2 parts (number + street name)
+//   if (parts.length >= 2) {
+//     var streetNumber = parts[0];
+//     var streetName = parts[1];
+    
+//     // Handle case where first part might be empty after cleaning
+//     if (streetNumber && streetName) {
+//       cleaned = streetNumber + ' ' + streetName;
+//     }
+//   }
+  
+//   // Remove common suffixes for matching (optional, but helps with matching)
+//   var suffixes = [
+//     'STREET', 'ST', 'DRIVE', 'DR', 'CIRCLE', 'CIR', 
+//     'AVENUE', 'AVE', 'ROAD', 'RD', 'COURT', 'CT', 
+//     'CRESCENT', 'CRES', 'LANE', 'LN', 'BOULEVARD', 'BLVD'
+//   ];
+  
+//   var suffixRegex = new RegExp(`\\s+(${suffixes.join('|')})$`, 'i');
+//   cleaned = cleaned.replace(suffixRegex, '');
+  
+//   return cleaned.trim();
+// }
+
+
+
+// // function fetchOrderTrackerDataByAddress() {
+// //   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+// //   // Get the sheets
+// //   var telusSheet = ss.getSheetByName('telus data');
+// //   var orderSheet = ss.getSheetByName('order tracker data');
+  
+// //   // Get all data from both sheets
+// //   var telusData = telusSheet.getDataRange().getValues();
+// //   var orderData = orderSheet.getDataRange().getValues();
+  
+// //   // Column O is index 14 (0-indexed)
+// //   var addressCol = 14; // Column O
+  
+// //   // Create a map of cleaned addresses to full rows from order tracker data
+// //   var orderMap = {};
+  
+// //   // Process order tracker data (skip header row, start from index 1)
+// //   for (var i = 1; i < orderData.length; i++) {
+// //     var orderRow = orderData[i];
+    
+// //     // Get address from column O
+// //     var rawOrderAddress = orderRow[addressCol];
+// //     if (!rawOrderAddress || rawOrderAddress === '') continue;
+    
+// //     // Clean the address from order tracker data
+// //     var cleanedOrderAddress = cleanAddressForMatching(rawOrderAddress);
+    
+// //     // Store the first occurrence only
+// //     if (!orderMap[cleanedOrderAddress]) {
+// //       // Store the entire row from column A to BE (columns 0 to 56)
+// //       var fullRowData = [];
+// //       for (var j = 0; j <= 56; j++) { // BE is column 56 (0-indexed)
+// //         fullRowData.push(orderRow[j] || '');
+// //       }
+// //       orderMap[cleanedOrderAddress] = fullRowData;
+// //     }
+// //   }
+  
+// //   // Now process telus data and add matches
+// //   var matchesFound = 0;
+// //   var rowsUpdated = 0;
+  
+// //   // Start from row 1 (skip header) in telus data
+// //   for (var i = 1; i < telusData.length; i++) {
+// //     var telusRow = telusData[i];
+// //     var rawTelusAddress = telusRow[addressCol];
+    
+// //     if (!rawTelusAddress || rawTelusAddress === '') continue;
+    
+// //     // Clean the address from telus data
+// //     var cleanedTelusAddress = cleanAddressForMatching(rawTelusAddress);
+    
+// //     // Look for match in order map
+// //     var matchedOrderData = orderMap[cleanedTelusAddress];
+    
+// //     if (matchedOrderData) {
+// //       matchesFound++;
+      
+// //       // Paste from column Q onwards (column Q is index 16, 0-indexed)
+// //       var startColumn = 16; // Column Q
+      
+// //       // Write the matched order data to the telus sheet row
+// //       for (var j = 0; j < matchedOrderData.length; j++) {
+// //         var targetColumn = startColumn + j;
+// //         if (targetColumn <= 56) { // BE is column 56, don't exceed
+// //           telusSheet.getRange(i + 1, targetColumn + 1).setValue(matchedOrderData[j]);
+// //         }
+// //       }
+// //       rowsUpdated++;
+// //     }
+// //   }
+  
+// //   // Show summary
+// //   SpreadsheetApp.getUi().alert('Address matching complete!\n\n' +
+// //     'Total unique addresses in order tracker: ' + Object.keys(orderMap).length + '\n' +
+// //     'Matches found in telus data: ' + matchesFound + '\n' +
+// //     'Rows updated in telus data: ' + rowsUpdated);
+// // }
+
+// // // Helper function to clean address for matching
+// // function cleanAddressForMatching(address) {
+// //   if (!address || address === '') return '';
+  
+// //   var cleaned = address.toString().trim().toUpperCase();
+  
+// //   // Remove unit/suite prefix like "1 - ", "PH8 - ", "2 - ", "11 - "
+// //   cleaned = cleaned.replace(/^[A-Z0-9]+ - /, '');
+// //   cleaned = cleaned.replace(/^[A-Z0-9]+#/, '');
+  
+// //   // Special case: "4201 50E RUE" -> extract "50E RUE"
+// //   var specialMatch = cleaned.match(/^\d+\s+(\d+[A-Z]\s+\w+)/);
+// //   if (specialMatch) {
+// //     cleaned = specialMatch[1];
+// //   }
+  
+// //   // Split into parts
+// //   var parts = cleaned.split(/\s+/);
+  
+// //   // If we have at least 2 parts (number + street name)
+// //   if (parts.length >= 2) {
+// //     var streetNumber = parts[0];
+// //     var streetName = parts[1];
+    
+// //     // Handle case where first part might be empty after cleaning
+// //     if (streetNumber && streetName) {
+// //       cleaned = streetNumber + ' ' + streetName;
+// //     }
+// //   }
+  
+// //   // Remove common suffixes for matching (optional, but helps with matching)
+// //   var suffixes = [
+// //     'STREET', 'ST', 'DRIVE', 'DR', 'CIRCLE', 'CIR', 
+// //     'AVENUE', 'AVE', 'ROAD', 'RD', 'COURT', 'CT', 
+// //     'CRESCENT', 'CRES', 'LANE', 'LN', 'BOULEVARD', 'BLVD'
+// //   ];
+  
+// //   var suffixRegex = new RegExp(`\\s+(${suffixes.join('|')})$`, 'i');
+// //   cleaned = cleaned.replace(suffixRegex, '');
+  
+// //   return cleaned.trim();
+// // }
