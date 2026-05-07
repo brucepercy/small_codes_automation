@@ -1,0 +1,153 @@
+function generateAndCreateDrafts() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // ---- Sheet names ----
+  const TEMPLATE_SHEET_NAME = "Email Template";
+  const CC_SHEET_NAME = "Tier Level - Email CC";
+  const DATA_SHEET_NAME = "Weekly_Update";
+
+  // ---- Template sheet columns (0‑based) ----
+  const TEMPLATE_TIER_COL = 0;     // A
+  const TEMPLATE_SUBJECT_COL = 1;  // B
+  const TEMPLATE_BODY_COL = 2;     // C
+
+  // ---- Weekly_Update columns (0‑based) ----
+  const DATA_EMAIL_COL = 0;         // A
+  const DATA_FLAG_HISTORY_COL = 2;  // C
+  const DATA_NAME_COL = 4;          // E
+  const DATA_INVALID_ID_COL = 12;   // M
+  const DATA_DATA_MANIP_COL = 13;   // N
+
+  // ================= 1. Load templates =================
+  const templateSheet = ss.getSheetByName(TEMPLATE_SHEET_NAME);
+  if (!templateSheet) {
+    SpreadsheetApp.getUi().alert(`Sheet "${TEMPLATE_SHEET_NAME}" not found.`);
+    return;
+  }
+
+  const templateData = templateSheet.getDataRange().getValues();
+  const templateMap = {}; // tier (string) → { subject, body }
+  for (let i = 1; i < templateData.length; i++) {
+    const tierRaw = templateData[i][TEMPLATE_TIER_COL];
+    if (tierRaw == null) continue;
+    const tier = tierRaw.toString().trim();
+    const subject = templateData[i][TEMPLATE_SUBJECT_COL]?.toString() || '';
+    const body = templateData[i][TEMPLATE_BODY_COL]?.toString() || '';
+    templateMap[tier] = { subject, body };
+  }
+
+  // ================= 2. Load CC mapping =================
+  const ccSheet = ss.getSheetByName(CC_SHEET_NAME);
+  const ccMap = {}; // tier → cc string
+  if (ccSheet) {
+    const ccData = ccSheet.getDataRange().getValues();
+    for (let i = 1; i < ccData.length; i++) {
+      const tierRaw = ccData[i][0];
+      if (!tierRaw) continue;
+      const tierKey = tierRaw.toString().trim();
+      const cc = ccData[i][1]?.toString() || '';
+      ccMap[tierKey] = cc;
+    }
+  }
+
+  // ================= 3. Process Weekly_Update =================
+  const dataSheet = ss.getSheetByName(DATA_SHEET_NAME);
+  if (!dataSheet) {
+    SpreadsheetApp.getUi().alert(`Sheet "${DATA_SHEET_NAME}" not found.`);
+    return;
+  }
+
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow < 2) {
+    SpreadsheetApp.getUi().alert("No data rows in Weekly_Update.");
+    return;
+  }
+
+  const allData = dataSheet.getRange(2, 1, lastRow - 1, dataSheet.getLastColumn()).getValues();
+
+  let draftsCreated = 0;
+  let skippedNoEmail = 0;
+  let skippedNoTemplate = 0;
+
+  allData.forEach((row, index) => {
+    const email = row[DATA_EMAIL_COL]?.toString().trim();
+    const tierRaw = row[DATA_FLAG_HISTORY_COL];
+    const repName = row[DATA_NAME_COL]?.toString().trim() || "Team Member";
+    const invalidCount = Number(row[DATA_INVALID_ID_COL]) || 0;
+    const manipCount = Number(row[DATA_DATA_MANIP_COL]) || 0;
+
+    if (!email) {
+      skippedNoEmail++;
+      return;
+    }
+
+    const tier = tierRaw != null ? tierRaw.toString().trim() : '';
+    if (!tier || !templateMap[tier]) {
+      skippedNoTemplate++;
+      return;
+    }
+
+    const template = templateMap[tier];
+    let subject = template.subject.replace(/\[Rep Name\]/gi, repName);
+    let body = template.body;
+
+    // Replace [Rep Name] (case‑insensitive)
+    body = body.replace(/\[Rep Name\]/gi, repName);
+
+    // ---- Process body line by line ----
+    const lines = body.split('\n');
+    const newLines = [];
+
+    for (let line of lines) {
+      // Trim to check content, but keep original spacing when we add it back
+      const trimmed = line.trim();
+
+      // Check for the two special count placeholders
+      if (/^Invalid ID\s*\(count\)$/i.test(trimmed)) {
+        if (invalidCount > 0) {
+          newLines.push(`<b>Invalid ID (${invalidCount})</b>`);
+        }
+        // if 0, skip the line entirely
+        continue;
+      }
+
+      if (/^Data Manipulation\s*\(count\)$/i.test(trimmed)) {
+        if (manipCount > 0) {
+          newLines.push(`<b>Data Manipulation (${manipCount})</b>`);
+        }
+        // if 0, skip
+        continue;
+      }
+
+      // Any other line: keep as is (including blank lines for spacing)
+      newLines.push(line);
+    }
+
+    // Build final HTML body: join lines with <br>, blank lines become <br> (which produces spacing)
+    let htmlBody = newLines.join('<br>');
+
+    // Ensure double <br> for paragraph breaks where there were empty lines in the template
+    // (already handled because empty lines are kept as empty strings in newLines,
+    // so you get <br><br> naturally)
+
+    // Get CC for this tier
+    const cc = ccMap[tier] || '';
+
+    try {
+      GmailApp.createDraft(email, subject, '', {
+        htmlBody: htmlBody,
+        cc: cc
+      });
+      draftsCreated++;
+    } catch (e) {
+      Logger.log(`Error creating draft for row ${index+2} (${email}): ${e.message}`);
+    }
+  });
+
+  // Summary alert
+  SpreadsheetApp.getUi().alert(
+    `Drafts created: ${draftsCreated}\n` +
+    `Skipped (no email): ${skippedNoEmail}\n` +
+    `Skipped (no template for tier): ${skippedNoTemplate}`
+  );
+}
