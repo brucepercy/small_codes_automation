@@ -1,0 +1,248 @@
+function fullautomation() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sourceSheet = ss.getSheetByName("June 2025 - Onwards");
+  var targetSheet = ss.getSheetByName("Name Counter Date");
+
+  var inputDate = targetSheet.getRange("A2").getValue();
+
+  if (!(inputDate instanceof Date) || isNaN(inputDate)) {
+    SpreadsheetApp.getUi().alert("Please enter a valid date in cell A2");
+    return;
+  }
+
+  var targetYear = inputDate.getFullYear();
+  var targetMonth = inputDate.getMonth();
+  var targetDay = inputDate.getDate();
+
+  var dataRange = sourceSheet.getDataRange();
+  var data = dataRange.getValues();
+
+  var dateColumnIndex = 0;
+  var managerColumnIndex = 7;
+  var programColumnIndex = 3;
+
+  var managerCounts = {};
+  var managerProgram = {};
+
+  for (var i = 1; i < data.length; i++) {
+    var rowDate = data[i][dateColumnIndex];
+
+    if (rowDate instanceof Date && !isNaN(rowDate)) {
+      if (rowDate.getFullYear() === targetYear &&
+          rowDate.getMonth() === targetMonth &&
+          rowDate.getDate() === targetDay) {
+
+        var managerName = data[i][managerColumnIndex];
+        var program = data[i][programColumnIndex];
+
+        if (managerName) {
+          managerName = managerName.toString().trim();
+          if (managerName) {
+            managerCounts[managerName] = (managerCounts[managerName] || 0) + 1;
+            if (!managerProgram[managerName] && program) {
+              managerProgram[managerName] = program.toString().trim();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  var uniqueManagers = Object.keys(managerCounts).sort();
+
+  if (targetSheet.getLastRow() > 2) {
+    targetSheet.getRange("B2:G" + targetSheet.getLastRow()).clearContent();
+  } else if (targetSheet.getLastRow() === 2) {
+    targetSheet.getRange("B2:G2").clearContent();
+  }
+
+  var totalCount = 0;
+
+  uniqueManagers.forEach(function(manager, i) {
+    var count = managerCounts[manager];
+    var program = managerProgram[manager] || "Not Specified";
+    totalCount += count;
+
+    targetSheet.getRange(i + 2, 2).setValue(program);
+    targetSheet.getRange(i + 2, 3).setValue(manager);
+    targetSheet.getRange(i + 2, 4).setValue(count + "/" + count);
+    targetSheet.getRange(i + 2, 5).setValue(count);
+  });
+
+  var lastRow = uniqueManagers.length + 1;
+  targetSheet.getRange(lastRow + 1, 4).setValue(totalCount + "/" + totalCount);
+
+  // ✅ Now automatically create the draft email after data is written
+  createReportDraft();
+}
+
+function createReportDraft() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var targetSheet = ss.getSheetByName("Name Counter Date");
+
+  var recipients = [
+    "suleiman.barekzai@connect6group.com",
+    "austin.fernandes@connect6group.com",
+    "andrew.yousefpour@connect6group.com",
+    "andre.gomes@connect6group.com",
+    "santino.tersigni@connect6group.com",
+    "nikki.bhavsar@connect6group.com"
+  ].join(",");
+
+  var senderName = "Bruce Percy"; // This is what you wanted back!
+
+  var inputDate = targetSheet.getRange("A2").getValue();
+  var formattedDate = (inputDate instanceof Date && !isNaN(inputDate)) 
+      ? Utilities.formatDate(inputDate, Session.getScriptTimeZone(), "MMMM d, yyyy") 
+      : "Unknown Date";
+
+  var lastRow = targetSheet.getLastRow();
+  if (lastRow < 2) return;
+
+  // --- 1. Fetch the "BRUCE G" HTML Signature ---
+  var signatureHtml = "";
+  try {
+    var sendAs = Gmail.Users.Settings.SendAs.list("me").sendAs;
+    var account = sendAs.find(info => info.displayName === "BRUCE G") || 
+                  sendAs.find(info => info.isDefault === true);
+    signatureHtml = account ? account.signature : "";
+  } catch (e) {
+    console.log("Error: " + e);
+  }
+
+  // --- 2. Build the HTML Email Body ---
+  var htmlBody = "<div style='font-family: Arial, sans-serif;'>Hi Team,<br><br>";
+  htmlBody += "Please find below the checklist completion status for <b>" + formattedDate + "</b>:<br><br>";
+
+  var totalCompleted = 0;
+  var totalExpected = 0;
+  var dataRows = [];
+
+  for (var r = 2; r <= lastRow; r++) {
+    var manager = targetSheet.getRange(r, 3).getValue().toString().trim();
+    if (manager !== "") {
+      var program = targetSheet.getRange(r, 2).getValue().toString() || "Not Specified";
+      var checklistRaw = targetSheet.getRange(r, 4).getDisplayValue().toString().trim();
+      var completed = 0, expected = 0;
+
+      if (checklistRaw.indexOf("/") !== -1) {
+        var parts = checklistRaw.split("/");
+        completed = Number(parts[0]) || 0;
+        expected  = Number(parts[1]) || 0;
+      }
+
+      var percent = expected > 0 ? Math.round((completed / expected) * 100) : 0;
+      var emoji = percent >= 100 ? "✅" : percent >= 50 ? "⚠️" : "❌";
+
+      htmlBody += "<b>Manager Name:</b> " + manager + "<br>";
+      htmlBody += "<b>Program:</b> " + program + "<br>";
+      htmlBody += "<b>Checklists Completed:</b> " + completed + "/" + expected + " (" + percent + "%) " + emoji + "<br><br>";
+
+      totalCompleted += completed;
+      totalExpected  += expected;
+    }
+  }
+
+  var overallPercent = totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+  htmlBody += "<b>Overall Percentage Calculation:</b><br><br>";
+  htmlBody += "A total of " + totalCompleted + " out of " + totalExpected + " checklists were completed, ";
+  htmlBody += "resulting in an overall checklist completion percentage of <b>" + overallPercent + "%</b> for " + formattedDate + ".<br><br>";
+  
+  // --- 3. Add Best Regards + Signature ---
+  htmlBody += "Best Regards,<br>" + senderName + "<br><br>";
+  htmlBody += signatureHtml + "</div>";
+
+  var subject = "Checklist Completion Report – " + formattedDate;
+
+  GmailApp.createDraft(recipients, subject, "", {
+    htmlBody: htmlBody
+  });
+
+  SpreadsheetApp.getUi().alert("Draft created! It now includes 'Best Regards, Bruce Percy' followed by your 'BRUCE G' image signature.");
+}
+
+
+// function createReportDraft() {
+//   var ss = SpreadsheetApp.getActiveSpreadsheet();
+//   var targetSheet = ss.getSheetByName("Name Counter Date");
+
+// var recipients = [
+//   "suleiman.barekzai@connect6group.com",
+//   "ruba.sri@connect6group.com",
+//   "austin.fernandes@connect6group.com",
+//   "andrew.yousefpour@connect6group.com",
+//   "andre.gomes@connect6group.com",
+//   "santino.tersigni@connect6group.com",
+//   "nikki.bhavsar@connect6group.com"
+// ];
+//   var senderName = "Bruce Percy";
+
+//   var inputDate = targetSheet.getRange("A2").getValue();
+//   var formattedDate = "";
+//   if (inputDate instanceof Date && !isNaN(inputDate)) {
+//     formattedDate = Utilities.formatDate(inputDate, Session.getScriptTimeZone(), "MMMM d, yyyy");
+//   } else {
+//     formattedDate = "Unknown Date";
+//   }
+
+//   var lastRow = targetSheet.getLastRow();
+//   if (lastRow < 2) {
+//     SpreadsheetApp.getUi().alert("No data found.");
+//     return;
+//   }
+
+//   var dataRows = [];
+//   for (var r = 2; r <= lastRow; r++) {
+//     var managerVal = targetSheet.getRange(r, 3).getValue().toString().trim();
+//     if (managerVal !== "") {
+//       dataRows.push(r);
+//     }
+//   }
+
+//   if (dataRows.length === 0) {
+//     SpreadsheetApp.getUi().alert("No manager data found.");
+//     return;
+//   }
+
+//   var emailBody = "Hi Team,\n\n";
+//   emailBody += "Please find below the checklist completion status for " + formattedDate + ":\n\n";
+
+//   var totalCompleted = 0;
+//   var totalExpected = 0;
+
+//   dataRows.forEach(function(rowNum) {
+//     var program = targetSheet.getRange(rowNum, 2).getValue().toString() || "Not Specified";
+//     var manager = targetSheet.getRange(rowNum, 3).getValue().toString() || "Unknown";
+
+//     var checklistRaw = targetSheet.getRange(rowNum, 4).getDisplayValue().toString().trim();
+
+//     var completed = 0;
+//     var expected = 0;
+
+//     if (checklistRaw.indexOf("/") !== -1) {
+//       var parts = checklistRaw.split("/");
+//       completed = Number(parts[0]) || 0;
+//       expected  = Number(parts[1]) || 0;
+//     }
+
+//     var percent = expected > 0 ? Math.round((completed / expected) * 100) : 0;
+//     var emoji = percent >= 100 ? "✅" : percent >= 50 ? "⚠️" : "❌";
+
+//     emailBody += "Manager Name: " + manager + "\n";
+//     emailBody += "Program: " + program + "\n";
+//     emailBody += "Checklists Completed: " + completed + "/" + expected + " (" + percent + "%) " + emoji + "\n\n";
+
+//     totalCompleted += completed;
+//     totalExpected  += expected;
+//   });
+
+//   var overallPercent = totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+//   emailBody += "Overall Percentage Calculation:\n\n";
+//   emailBody += "A total of " + totalCompleted + " out of " + totalExpected + " checklists were completed, ";
+//   emailBody += "resulting in an overall checklist completion percentage of " + overallPercent + "% for " + formattedDate + ".\n\n";
+//   emailBody += "Best Regards,\n" + senderName;
+
+//   var subject = "Checklist Completion Report – " + formattedDate;
+//   GmailApp.createDraft(recipients, subject, emailBody);
+//   SpreadsheetApp.getUi().alert("Done! Data written and draft email created in Gmail.\nTo: " + recipients);
+// }
