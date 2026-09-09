@@ -1,0 +1,101 @@
+function matchAndCopyAccountDetails_CheckOnce() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Source sheets and their account number column indices
+  const sourceSheets = [
+    { name: "2026", accountColumn: 45 }, // Column AS
+    { name: "June 2025 - Onwards", accountColumn: 48 } // Column AV
+  ];
+
+  const targetSheetName = "Cancelled Lines";
+  const targetStartRow = 2;
+  const targetAccountColumn = 1; // Column A
+  const targetStartColumn = 2;   // ✅ Start writing from Column B
+
+  const targetSheet = ss.getSheetByName(targetSheetName);
+  if (!targetSheet) {
+    throw new Error("Target sheet 'Cancelled Lines' does not exist.");
+  }
+
+  // Get account numbers from Column A
+  const lastRow = targetSheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log("❌ No account numbers to process.");
+    return;
+  }
+
+  const accountNumbers = targetSheet
+    .getRange(2, targetAccountColumn, lastRow - 1, 1)
+    .getValues()
+    .flat();
+
+  // Track usage count per account (to avoid duplicates)
+  const accountCountMap = new Map();
+
+  // Prepare results array
+  const results = accountNumbers.map(() => []);
+
+  // Loop through source sheets
+  for (const source of sourceSheets) {
+    const sourceSheet = ss.getSheetByName(source.name);
+    if (!sourceSheet) {
+      Logger.log(`Source sheet '${source.name}' not found. Skipping.`);
+      continue;
+    }
+
+    const sourceLastRow = sourceSheet.getLastRow();
+    if (sourceLastRow < 2) continue;
+
+    const sourceData = sourceSheet
+      .getRange(2, 1, sourceLastRow - 1, sourceSheet.getLastColumn())
+      .getValues();
+
+    // Match each account
+    for (let i = 0; i < accountNumbers.length; i++) {
+      const accountNumber = accountNumbers[i];
+      if (!accountNumber) continue;
+
+      const count = accountCountMap.get(accountNumber) || 0;
+
+      const matchingRows = sourceData.filter(
+        row => row[source.accountColumn - 1] === accountNumber
+      );
+
+      if (count < matchingRows.length) {
+        results[i] = matchingRows[count];
+        accountCountMap.set(accountNumber, count + 1);
+      }
+    }
+  }
+
+  // Determine max columns
+  const maxCols = results.reduce((max, row) => Math.max(max, row.length || 0), 0);
+
+  // Pad rows
+  const paddedResults = results.map(row => {
+    if (row.length === 0) return Array(maxCols).fill("");
+    return row.concat(Array(maxCols - row.length).fill(""));
+  });
+
+  // ✅ OPTIONAL: Clear old data from Column B onward before writing
+  if (lastRow > 1 && maxCols > 0) {
+    targetSheet
+      .getRange(targetStartRow, targetStartColumn, lastRow - 1, maxCols)
+      .clearContent();
+  }
+
+  // Write results starting from Column B
+  if (paddedResults.length > 0 && maxCols > 0) {
+    targetSheet
+      .getRange(targetStartRow, targetStartColumn, paddedResults.length, maxCols)
+      .setValues(paddedResults);
+
+    const matchedCount = paddedResults.filter(row =>
+      row.some(cell => cell !== "")
+    ).length;
+
+    Logger.log(`✅ Processed ${accountNumbers.length} accounts. Matches found: ${matchedCount}`);
+  } else {
+    Logger.log("❌ No matches found.");
+  }
+}
